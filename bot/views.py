@@ -64,10 +64,18 @@ profile_set_school = bot.callback_query_handler(func=lambda call: call.data == "
 # Регистрация хендлеров для оплаты
 pay = bot.callback_query_handler(func=lambda call: call.data == "pay")(common.pay)
 payment_i_paid = bot.callback_query_handler(func=lambda call: call.data.startswith("payment_i_paid_"))(common.payment_i_paid)
+month_pay = bot.callback_query_handler(func=lambda call: call.data.startswith("month_pay_"))(common.handle_month_payment)
+month_paid = bot.callback_query_handler(func=lambda call: call.data.startswith("month_paid_"))(common.handle_month_paid_info)
+pay_now = bot.callback_query_handler(func=lambda call: call.data.startswith("pay_now_"))(common.pay_now)
+payment_calendar = bot.callback_query_handler(func=lambda call: call.data == "payment_calendar")(common.payment_calendar_back)
 
 # Регистрация хендлеров для регистрации
 start_registration = bot.message_handler(commands=["start_registration"])(registration.start_registration)
 start_registration_call = bot.callback_query_handler(func=lambda call: call.data == "start_registration")(registration.start_registration)
+education_type_cb = bot.callback_query_handler(func=lambda call: call.data.startswith("education_type_"))(registration.handle_education_type)
+grade_selection_cb = bot.callback_query_handler(func=lambda call: call.data.startswith("grade_"))(registration.handle_grade_selection)
+start_brief_after_reg_cb = bot.callback_query_handler(func=lambda call: call.data == "start_brief_after_reg")(registration.start_brief_after_registration)
+cancel_registration_cb = bot.callback_query_handler(func=lambda call: call.data == "cancel_registration")(registration.cancel_registration)
 
 # Регистрация хендлеров для админ-панели
 admin_menu_cb = bot.callback_query_handler(func=lambda call: call.data == "admin_menu")(admin.admin_menu)

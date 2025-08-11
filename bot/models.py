@@ -89,6 +89,8 @@ class Payment(models.Model):
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING, verbose_name="Статус")
     description = models.CharField(max_length=255, blank=True, verbose_name="Описание")
     yookassa_payment_id = models.CharField(max_length=100, blank=True, null=True, verbose_name="ID платежа ЮKassa")
+    payment_month = models.DateField(verbose_name="Месяц оплаты", help_text="Первый день месяца, за который производится оплата", default='2024-08-01')
+    academic_year = models.CharField(max_length=9, verbose_name="Учебный год", help_text="Например: 2024-2025", default='2024-2025')
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата создания")
     confirmed_at = models.DateTimeField(blank=True, null=True, verbose_name="Дата подтверждения")
     admin_comment = models.CharField(max_length=255, blank=True, verbose_name="Комментарий администратора")
@@ -96,7 +98,34 @@ class Payment(models.Model):
     class Meta:
         verbose_name = "Платеж"
         verbose_name_plural = "Платежи"
-        ordering = ['-created_at']
+        ordering = ['-payment_month', '-created_at']
+        unique_together = ['user', 'payment_month', 'academic_year']
 
     def __str__(self):
-        return f"Платеж {self.id} - {self.user.user_tg_name} ({self.amount})"
+        return f"Платеж {self.id} - {self.user.user_tg_name} за {self.payment_month.strftime('%B %Y')}"
+
+    @property
+    def month_name(self):
+        """Возвращает название месяца на русском"""
+        month_names = {
+            1: 'Январь', 2: 'Февраль', 3: 'Март', 4: 'Апрель',
+            5: 'Май', 6: 'Июнь', 7: 'Июль', 8: 'Август',
+            9: 'Сентябрь', 10: 'Октябрь', 11: 'Ноябрь', 12: 'Декабрь'
+        }
+        return month_names[self.payment_month.month]
+
+    @property
+    def is_current_month(self):
+        """Проверяет, является ли месяц текущим"""
+        from datetime import date
+        today = date.today()
+        return (self.payment_month.year == today.year and 
+                self.payment_month.month == today.month)
+
+    @property
+    def is_future_month(self):
+        """Проверяет, является ли месяц будущим"""
+        from datetime import date
+        today = date.today()
+        return (self.payment_month.year > today.year or 
+                (self.payment_month.year == today.year and self.payment_month.month > today.month))

@@ -39,9 +39,14 @@ class UserBriefCompleteAdmin(admin.ModelAdmin):
 
 @admin.register(Payment)
 class PaymentAdmin(admin.ModelAdmin):
-    list_display = ('id', 'user', 'amount', 'status', 'created_at', 'confirmed_at', 'yookassa_payment_id')
-    list_filter = ('status',)
-    search_fields = ('user__user_name', 'user__full_name', 'yookassa_payment_id')
+    list_display = ('id', 'user', 'payment_month', 'academic_year', 'amount', 'status', 'created_at', 'confirmed_at')
+    list_filter = ('status', 'academic_year', 'payment_month')
+    search_fields = ('user__user_name', 'user__full_name', 'academic_year')
+    readonly_fields = ('created_at', 'confirmed_at')
+    date_hierarchy = 'payment_month'
+    
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related('user')
 
 
 admin.site.register(User, UserAdmin)

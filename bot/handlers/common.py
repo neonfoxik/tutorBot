@@ -1,4 +1,5 @@
 import logging
+from traceback import format_exc
 from telebot.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from bot.models import User, Payment
 from bot.keyboards import build_main_markup, build_payment_confirmation_markup, UNIVERSAL_BUTTONS, UNIVERSAL_VIDEO_MARKUP
@@ -258,10 +259,14 @@ def profile_set_school(call: CallbackQuery):
 def pay(call: CallbackQuery):
     """Обработчик кнопки 'Оплата'"""
     try:
+        logger.info(f"Начинаем обработку оплаты для пользователя {call.from_user.id}")
+        
         user = User.objects.get(telegram_id=str(call.from_user.id))
+        logger.info(f"Пользователь найден: {user.telegram_id}")
         
         # Проверяем, завершена ли регистрация
         if not user.full_name or not user.school or not user.grade:
+            logger.info(f"Регистрация не завершена для пользователя {user.telegram_id}")
             markup = InlineKeyboardMarkup()
             markup.add(InlineKeyboardButton("📝 Завершить регистрацию", callback_data="start_registration"))
             
@@ -280,38 +285,248 @@ def pay(call: CallbackQuery):
             bot.answer_callback_query(call.id)
             return
         
-        # Создаем запись о платеже
-        payment = Payment.objects.create(
-            user=user,
-            amount=1000.00,  # Фиксированная сумма для заглушки
-            description="Оплата за обучение",
-            status=Payment.Status.PENDING
-        )
+        logger.info(f"Регистрация завершена, показываем календарь для пользователя {user.telegram_id}")
         
-        # Заглушка для ЮKassa - в реальности здесь будет генерация ссылки
-        payment_link = f"https://yoomoney.ru/quickpay/button-widget?targets=Оплата%20за%20обучение&default-sum={payment.amount}&button-text=11&any-card-payment-type=on&button-size=m&button-color=orange&successURL=&quickpay=small&account=410012345678901&"
+        # Показываем календарь оплаты
+        show_payment_calendar(call, user)
         
-        payment_text = (
-            f"💳 <b>Оплата за обучение</b>\n\n"
-            f"💰 Сумма: {payment.amount} ₽\n"
-            f"📝 Описание: {payment.description}\n\n"
-            f"🔗 <a href='{payment_link}'>Перейти к оплате</a>\n\n"
-            f"После оплаты нажмите кнопку 'Я оплатил'"
-        )
+    except User.DoesNotExist:
+        logger.error(f"Пользователь не найден: {call.from_user.id}")
+        bot.answer_callback_query(call.id, "Пользователь не найден")
+    except Exception as e:
+        logger.error(f"Ошибка в pay: {e}")
+        logger.error(f"Traceback: {format_exc()}")
+        bot.answer_callback_query(call.id, "Произошла ошибка")
+
+
+def show_payment_calendar(call: CallbackQuery, user: User):
+    """Показывает календарь оплаты"""
+    try:
+        logger.info(f"Начинаем загрузку календаря для пользователя {user.telegram_id}")
+        
+        from bot.utils import get_payment_months, get_month_display_name, is_month_paid, get_current_academic_year
+        
+        # Получаем месяцы для оплаты (12 месяцев назад)
+        months = get_payment_months(12)
+        logger.info(f"Получены месяцы: {[m.strftime('%B %Y') for m in months]}")
+        
+        current_year = get_current_academic_year()
+        logger.info(f"Текущий учебный год: {current_year}")
+        
+        # Формируем текст
+        text = f"💳 <b>Оплата за обучение</b>\n\n"
+        text += f"👤 Пользователь: {user.full_name}\n"
+        text += f"🎓 {user.grade}\n"
+        text += f"📚 {user.school}\n"
+        text += f"📅 Учебный год: {current_year}\n\n"
+        text += "Выберите месяц для оплаты:\n"
+        text += "✅ - оплачено, 💰 - доступно для оплаты\n\n"
+        
+        # Создаем клавиатуру с месяцами (2 колонки по 12 месяцев)
+        markup = InlineKeyboardMarkup(row_width=2)
+        
+        for i, month_date in enumerate(months):
+            try:
+                month_name = get_month_display_name(month_date)
+                month_key = f"{month_date.year}_{month_date.month:02d}"
+                
+                logger.info(f"Обрабатываем месяц {month_name} {month_date.year}")
+                
+                if is_month_paid(user, month_date):
+                    # Месяц уже оплачен
+                    button_text = f"✅ {month_name}"
+                    callback_data = f"month_paid_{month_key}"
+                    logger.info(f"Месяц {month_name} уже оплачен")
+                else:
+                    # Месяц доступен для оплаты
+                    button_text = f"💰 {month_name}"
+                    callback_data = f"month_pay_{month_key}"
+                    logger.info(f"Месяц {month_name} доступен для оплаты")
+                
+                markup.add(InlineKeyboardButton(button_text, callback_data=callback_data))
+                
+            except Exception as month_error:
+                logger.error(f"Ошибка при обработке месяца {month_date}: {month_error}")
+                # Пропускаем проблемный месяц
+                continue
+        
+        markup.add(InlineKeyboardButton("🔙 Назад", callback_data="main_menu"))
+        
+        logger.info("Клавиатура создана, отправляем сообщение")
         
         bot.edit_message_text(
-            payment_text,
+            text,
             call.message.chat.id,
             call.message.message_id,
-            reply_markup=build_payment_confirmation_markup(payment.id),
+            reply_markup=markup,
+            parse_mode='HTML'
+        )
+        bot.answer_callback_query(call.id)
+        
+        logger.info("Календарь успешно загружен")
+        
+    except Exception as e:
+        logger.error(f"Ошибка в show_payment_calendar: {e}")
+        logger.error(f"Traceback: {format_exc()}")
+        bot.answer_callback_query(call.id, "Произошла ошибка при загрузке календаря")
+
+
+def handle_month_payment(call: CallbackQuery):
+    """Обрабатывает выбор месяца для оплаты"""
+    try:
+        user = User.objects.get(telegram_id=str(call.from_user.id))
+        
+        # Извлекаем месяц из callback_data
+        month_key = call.data.split('_', 2)[2]  # month_pay_2024_08 -> 2024_08
+        from bot.utils import parse_month_key, get_month_display_name, get_academic_year_for_month, get_payment_amount_for_month
+        
+        month_date = parse_month_key(month_key)
+        month_name = get_month_display_name(month_date)
+        academic_year = get_academic_year_for_month(month_date)
+        amount = get_payment_amount_for_month(month_date)
+        
+        # Создаем или получаем запись о платеже
+        from bot.models import Payment
+        payment, created = Payment.objects.get_or_create(
+            user=user,
+            payment_month=month_date,
+            academic_year=academic_year,
+            defaults={
+                'amount': amount,
+                'description': f"Оплата за {month_name} {month_date.year}",
+                'status': Payment.Status.PENDING
+            }
+        )
+        
+        if not created and payment.status in [Payment.Status.SUCCEEDED, Payment.Status.MANUAL]:
+            # Месяц уже оплачен
+            bot.answer_callback_query(call.id, f"✅ {month_name} уже оплачен!")
+            return
+        
+        # Показываем информацию об оплате
+        text = f"💳 <b>Оплата за {month_name} {month_date.year}</b>\n\n"
+        text += f"👤 Пользователь: {user.full_name}\n"
+        text += f"🎓 {user.grade}\n"
+        text += f"📚 {user.school}\n"
+        text += f"📅 Учебный год: {academic_year}\n"
+        text += f"💰 Сумма: {amount} ₽\n\n"
+        text += "Нажмите кнопку ниже для перехода к оплате:"
+        
+        markup = InlineKeyboardMarkup()
+        markup.add(InlineKeyboardButton("💳 Перейти к оплате", callback_data=f"pay_now_{payment.id}"))
+        markup.add(InlineKeyboardButton("🔙 Назад к календарю", callback_data="payment_calendar"))
+        markup.add(InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu"))
+        
+        bot.edit_message_text(
+            text,
+            call.message.chat.id,
+            call.message.message_id,
+            reply_markup=markup,
+            parse_mode='HTML'
+        )
+        bot.answer_callback_query(call.id)
+        
+    except Exception as e:
+        logging.error(f"Ошибка в handle_month_payment: {e}")
+        bot.answer_callback_query(call.id, "Произошла ошибка")
+
+
+def handle_month_paid_info(call: CallbackQuery):
+    """Показывает информацию об уже оплаченном месяце"""
+    try:
+        user = User.objects.get(telegram_id=str(call.from_user.id))
+        
+        # Извлекаем месяц из callback_data
+        month_key = call.data.split('_', 2)[2]  # month_paid_2024_08 -> 2024_08
+        from bot.utils import parse_month_key, get_month_display_name, get_academic_year_for_month
+        
+        month_date = parse_month_key(month_key)
+        month_name = get_month_display_name(month_date)
+        academic_year = get_academic_year_for_month(month_date)
+        
+        # Получаем информацию о платеже
+        from bot.models import Payment
+        payment = Payment.objects.get(
+            user=user,
+            payment_month=month_date,
+            academic_year=academic_year
+        )
+        
+        text = f"✅ <b>{month_name} {month_date.year} - Оплачено</b>\n\n"
+        text += f"👤 Пользователь: {user.full_name}\n"
+        text += f"🎓 {user.grade}\n"
+        text += f"📚 {user.school}\n"
+        text += f"📅 Учебный год: {academic_year}\n"
+        text += f"💰 Сумма: {payment.amount} ₽\n"
+        text += f"📅 Дата оплаты: {payment.confirmed_at.strftime('%d.%m.%Y') if payment.confirmed_at else 'Не указана'}\n"
+        text += f"📝 Статус: {payment.get_status_display()}\n\n"
+        text += "Этот месяц уже оплачен и доступен для обучения."
+        
+        markup = InlineKeyboardMarkup()
+        markup.add(InlineKeyboardButton("🔙 Назад к календарю", callback_data="payment_calendar"))
+        markup.add(InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu"))
+        
+        bot.edit_message_text(
+            text,
+            call.message.chat.id,
+            call.message.message_id,
+            reply_markup=markup,
+            parse_mode='HTML'
+        )
+        bot.answer_callback_query(call.id)
+        
+    except Exception as e:
+        logging.error(f"Ошибка в handle_month_paid_info: {e}")
+        bot.answer_callback_query(call.id, "Произошла ошибка")
+
+
+def pay_now(call: CallbackQuery):
+    """Переход к оплате выбранного месяца"""
+    try:
+        payment_id = int(call.data.split('_')[-1])
+        from bot.models import Payment
+        
+        payment = Payment.objects.get(id=payment_id)
+        user = payment.user
+        
+        # Заглушка для ЮKassa - в реальности здесь будет генерация ссылки
+        payment_link = f"https://yoomoney.ru/quickpay/button-widget?targets=Оплата%20за%20{payment.payment_month.strftime('%B %Y')}&default-sum={payment.amount}&button-text=11&any-card-payment-type=on&button-size=m&button-color=orange&successURL=&quickpay=small&account=410012345678901&"
+        
+        text = f"💳 <b>Оплата за {payment.payment_month.strftime('%B %Y')}</b>\n\n"
+        text += f"👤 Пользователь: {user.full_name}\n"
+        text += f"🎓 {user.grade}\n"
+        text += f"📚 {user.school}\n"
+        text += f"💰 Сумма: {payment.amount} ₽\n\n"
+        text += f"🔗 <a href='{payment_link}'>Перейти к оплате</a>\n\n"
+        text += "После оплаты нажмите кнопку 'Я оплатил'"
+        
+        markup = InlineKeyboardMarkup()
+        markup.add(InlineKeyboardButton("✅ Я оплатил", callback_data=f"payment_i_paid_{payment.id}"))
+        markup.add(InlineKeyboardButton("🔙 Назад", callback_data=f"month_pay_{payment.payment_month.year}_{payment.payment_month.month:02d}"))
+        markup.add(InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu"))
+        
+        bot.edit_message_text(
+            text,
+            call.message.chat.id,
+            call.message.message_id,
+            reply_markup=markup,
             parse_mode='HTML',
             disable_web_page_preview=True
         )
         bot.answer_callback_query(call.id)
-    except User.DoesNotExist:
-        bot.answer_callback_query(call.id, "Пользователь не найден")
+        
     except Exception as e:
-        logging.error(f"Ошибка в pay: {e}")
+        logging.error(f"Ошибка в pay_now: {e}")
+        bot.answer_callback_query(call.id, "Произошла ошибка")
+
+
+def payment_calendar_back(call: CallbackQuery):
+    """Возврат к календарю оплаты"""
+    try:
+        user = User.objects.get(telegram_id=str(call.from_user.id))
+        show_payment_calendar(call, user)
+    except Exception as e:
+        logging.error(f"Ошибка в payment_calendar_back: {e}")
         bot.answer_callback_query(call.id, "Произошла ошибка")
 
 
@@ -325,12 +540,23 @@ def payment_i_paid(call: CallbackQuery):
         payment.status = Payment.Status.PENDING
         payment.save()
         
+        # Показываем информацию о платеже и предлагаем вернуться к календарю
+        text = "⏳ <b>Ожидание подтверждения</b>\n\n"
+        text += f"Ваш платеж за {payment.payment_month.strftime('%B %Y')} отправлен на проверку администратору.\n"
+        text += "Вы получите уведомление после подтверждения.\n\n"
+        text += f"💰 Сумма: {payment.amount} ₽\n"
+        text += f"📅 Месяц: {payment.payment_month.strftime('%B %Y')}\n"
+        text += f"📚 Учебный год: {payment.academic_year}"
+        
+        markup = InlineKeyboardMarkup()
+        markup.add(InlineKeyboardButton("📅 Вернуться к календарю", callback_data="payment_calendar"))
+        markup.add(InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu"))
+        
         bot.edit_message_text(
-            "⏳ <b>Ожидание подтверждения</b>\n\n"
-            "Ваш платеж отправлен на проверку администратору.\n"
-            "Вы получите уведомление после подтверждения.",
+            text,
             call.message.chat.id,
             call.message.message_id,
+            reply_markup=markup,
             parse_mode='HTML'
         )
         bot.answer_callback_query(call.id, "Платеж отправлен на проверку")
@@ -344,7 +570,9 @@ def payment_i_paid(call: CallbackQuery):
                     f"🔔 Новый платеж на проверку!\n"
                     f"Пользователь: {payment.user.user_tg_name}\n"
                     f"Сумма: {payment.amount} ₽\n"
-                    f"ID платежа: {payment.id}"
+                    f"ID платежа: {payment.id}\n"
+                    f"Месяц: {payment.payment_month.strftime('%B %Y')}\n"
+                    f"Учебный год: {payment.academic_year}"
                 )
         except Exception as e:
             logging.error(f"Ошибка при уведомлении админа: {e}")

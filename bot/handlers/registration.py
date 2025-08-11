@@ -53,20 +53,73 @@ def start_registration_flow(message: Message, user: User):
             )
             next_step = handle_full_name
         elif not user.school:
-            # Продолжаем со школы/вуза
+            # Продолжаем с выбора типа учебного заведения
             welcome_text = (
                 f"✅ ФИО: {user.full_name}\n\n"
-                "Теперь укажите название вашей школы или вуза:"
+                "Теперь выберите тип вашего учебного заведения:"
             )
-            next_step = handle_school
+            next_step = handle_education_type
         elif not user.grade:
             # Продолжаем с класса/курса
-            welcome_text = (
-                f"✅ ФИО: {user.full_name}\n"
-                f"✅ Школа/ВУЗ: {user.school}\n\n"
-                "Укажите ваш класс или курс (например: '10 класс' или '2 курс'):"
-            )
-            next_step = handle_grade
+            if user.school == "Школа":
+                # Показываем кнопки для классов
+                markup = InlineKeyboardMarkup(row_width=3)
+                for i in range(5, 12):
+                    markup.add(InlineKeyboardButton(f"{i} класс", callback_data=f"grade_school_{i}"))
+                markup.add(InlineKeyboardButton("🔙 Отменить регистрацию", callback_data="cancel_registration"))
+                
+                if hasattr(message, 'message'):  # Это callback query
+                    bot.edit_message_text(
+                        f"✅ ФИО: {user.full_name}\n"
+                        f"✅ Тип: {user.school}\n\n"
+                        "Выберите ваш класс:",
+                        message.message.chat.id,
+                        message.message.message_id,
+                        reply_markup=markup
+                    )
+                    bot.answer_callback_query(message.id)
+                else:  # Это обычное сообщение
+                    bot.reply_to(
+                        message,
+                        f"✅ ФИО: {user.full_name}\n"
+                        f"✅ Тип: {user.school}\n\n"
+                        "Выберите ваш класс:",
+                        reply_markup=markup
+                    )
+                return
+            elif user.school == "ВУЗ":
+                # Показываем кнопки для курсов
+                markup = InlineKeyboardMarkup(row_width=3)
+                for i in range(1, 7):
+                    markup.add(InlineKeyboardButton(f"{i} курс", callback_data=f"grade_university_{i}"))
+                markup.add(InlineKeyboardButton("🔙 Отменить регистрацию", callback_data="cancel_registration"))
+                
+                if hasattr(message, 'message'):  # Это callback query
+                    bot.edit_message_text(
+                        f"✅ ФИО: {user.full_name}\n"
+                        f"✅ Тип: {user.school}\n\n"
+                        "Выберите ваш курс:",
+                        message.message.chat.id,
+                        message.message.message_id,
+                        reply_markup=markup
+                    )
+                    bot.answer_callback_query(message.id)
+                else:  # Это обычное сообщение
+                    bot.reply_to(
+                        message,
+                        f"✅ ФИО: {user.full_name}\n"
+                        f"✅ Тип: {user.school}\n\n"
+                        "Выберите ваш курс:",
+                        reply_markup=markup
+                    )
+                return
+            else:
+                # Если тип не выбран, возвращаемся к выбору типа
+                welcome_text = (
+                    f"✅ ФИО: {user.full_name}\n\n"
+                    "Теперь выберите тип вашего учебного заведения:"
+                )
+                next_step = handle_education_type
         else:
             # Все заполнено - показываем главное меню
             from bot.handlers.common import start as start_handler
@@ -76,6 +129,11 @@ def start_registration_flow(message: Message, user: User):
         # Если это callback query, сначала отвечаем на него
         if hasattr(message, 'id') and hasattr(message, 'answer_callback_query'):
             bot.answer_callback_query(message.id)
+        
+        # Если следующий шаг - это handle_education_type, то это callback query
+        if next_step == handle_education_type:
+            # Для callback query не нужен register_next_step_handler
+            return
         
         msg = bot.reply_to(
             message,
@@ -92,7 +150,7 @@ def start_registration_flow(message: Message, user: User):
 
 
 def handle_full_name(message: Message, user: User):
-    """Обрабатывает ввод ФИО и запрашивает школу/вуз"""
+    """Обрабатывает ввод ФИО и запрашивает тип учебного заведения"""
     try:
         # Проверяем минимальную длину ФИО
         if len(message.text.split()) < 2:
@@ -106,19 +164,76 @@ def handle_full_name(message: Message, user: User):
         user.full_name = message.text
         user.save()
         
-      
+        # Создаем кнопки для выбора типа учебного заведения
+        markup = InlineKeyboardMarkup()
+        markup.add(InlineKeyboardButton("🏫 Школа", callback_data="education_type_school"))
+        markup.add(InlineKeyboardButton("🎓 ВУЗ", callback_data="education_type_university"))
+        
         msg = bot.reply_to(
             message,
             "✅ ФИО сохранено!\n\n"
-            "Теперь укажите название вашей школы или вуза:",
+            "Теперь выберите тип вашего учебного заведения:",
+            reply_markup=markup
         )
-        
-        # Регистрируем следующий шаг для получения школы/вуза
-        bot.register_next_step_handler(msg, handle_school, user)
         
     except Exception as e:
         logging.error(f"Ошибка в handle_full_name: {e}")
         bot.reply_to(message, "❌ Произошла ошибка при сохранении ФИО")
+
+
+def handle_education_type(call: CallbackQuery):
+    """Обрабатывает выбор типа учебного заведения"""
+    try:
+        user_id = str(call.from_user.id)
+        user = User.objects.get(telegram_id=user_id)
+        
+        # Определяем тип учебного заведения
+        if call.data == "education_type_school":
+            user.school = "Школа"
+            education_type_text = "🏫 Школа"
+        else:
+            user.school = "ВУЗ"
+            education_type_text = "🎓 ВУЗ"
+        
+        user.save()
+        
+        # Показываем соответствующие варианты для класса или курса
+        if user.school == "Школа":
+            # Создаем кнопки для классов с 5 по 11
+            markup = InlineKeyboardMarkup(row_width=3)
+            for i in range(5, 12):
+                markup.add(InlineKeyboardButton(f"{i} класс", callback_data=f"grade_school_{i}"))
+            markup.add(InlineKeyboardButton("🔙 Отменить регистрацию", callback_data="cancel_registration"))
+            
+            bot.edit_message_text(
+                f"✅ Тип учебного заведения: {education_type_text}\n\n"
+                "Теперь выберите ваш класс:",
+                call.message.chat.id,
+                call.message.message_id,
+                reply_markup=markup
+            )
+        else:
+            # Создаем кнопки для курсов с 1 по 6
+            markup = InlineKeyboardMarkup(row_width=3)
+            for i in range(1, 7):
+                markup.add(InlineKeyboardButton(f"{i} курс", callback_data=f"grade_university_{i}"))
+            markup.add(InlineKeyboardButton("🔙 Отменить регистрацию", callback_data="cancel_registration"))
+            
+            bot.edit_message_text(
+                f"✅ Тип учебного заведения: {education_type_text}\n\n"
+                "Теперь выберите ваш курс:",
+                call.message.chat.id,
+                call.message.message_id,
+                reply_markup=markup
+            )
+        
+        bot.answer_callback_query(call.id)
+        
+    except User.DoesNotExist:
+        bot.answer_callback_query(call.id, "❌ Пользователь не найден")
+    except Exception as e:
+        logging.error(f"Ошибка в handle_education_type: {e}")
+        bot.answer_callback_query(call.id, "❌ Произошла ошибка")
 
 
 def handle_school(message: Message, user: User):
@@ -151,6 +266,48 @@ def handle_school(message: Message, user: User):
     except Exception as e:
         logging.error(f"Ошибка в handle_school: {e}")
         bot.reply_to(message, "❌ Произошла ошибка при сохранении учебного заведения")
+
+
+def handle_grade_selection(call: CallbackQuery):
+    """Обрабатывает выбор класса или курса"""
+    try:
+        user_id = str(call.from_user.id)
+        user = User.objects.get(telegram_id=user_id)
+        
+        # Извлекаем класс или курс из callback_data
+        if call.data.startswith("grade_school_"):
+            grade_num = call.data.split("_")[-1]
+            user.grade = f"{grade_num} класс"
+        elif call.data.startswith("grade_university_"):
+            grade_num = call.data.split("_")[-1]
+            user.grade = f"{grade_num} курс"
+        
+        user.save()
+        
+        # Регистрация завершена, предлагаем заполнить бриф
+        markup = InlineKeyboardMarkup()
+        markup.add(InlineKeyboardButton("📝 Заполнить бриф", callback_data="start_brief_after_reg"))
+        
+        bot.edit_message_text(
+            f"🎉 <b>Регистрация успешно завершена!</b>\n\n"
+            f"✅ ФИО: {user.full_name}\n"
+            f"✅ Тип: {user.school}\n"
+            f"✅ {user.grade}\n\n"
+            f"Теперь давайте заполним небольшой бриф, чтобы лучше понять ваши потребности "
+            f"и подобрать оптимальную программу обучения.",
+            call.message.chat.id,
+            call.message.message_id,
+            reply_markup=markup,
+            parse_mode='HTML'
+        )
+        
+        bot.answer_callback_query(call.id)
+        
+    except User.DoesNotExist:
+        bot.answer_callback_query(call.id, "❌ Пользователь не найден")
+    except Exception as e:
+        logging.error(f"Ошибка в handle_grade_selection: {e}")
+        bot.answer_callback_query(call.id, "❌ Произошла ошибка")
 
 
 def handle_grade(message: Message, user: User):
