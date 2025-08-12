@@ -318,13 +318,16 @@ def show_payment_calendar(call: CallbackQuery, user: User):
         text += f"👤 Пользователь: {user.full_name}\n"
         text += f"🎓 {user.grade}\n"
         text += f"📚 {user.school}\n"
-        text += f"📅 Учебный год: {current_year}\n\n"
+        text += f"📅 Учебный год: {current_year}\n"
+        text += f"💰 Стоимость обучения: 1000 ₽/месяц\n\n"
         text += "Выберите месяц для оплаты:\n"
         text += "✅ - оплачено, 💰 - доступно для оплаты\n\n"
         
-        # Создаем клавиатуру с месяцами (2 колонки по 12 месяцев)
+        # Создаем клавиатуру с месяцами в 2 столбца
         markup = InlineKeyboardMarkup(row_width=2)
         
+        # Создаем список кнопок для месяцев
+        month_buttons = []
         for i, month_date in enumerate(months):
             try:
                 month_name = get_month_display_name(month_date)
@@ -343,14 +346,24 @@ def show_payment_calendar(call: CallbackQuery, user: User):
                     callback_data = f"month_pay_{month_key}"
                     logger.info(f"Месяц {month_name} доступен для оплаты")
                 
-                markup.add(InlineKeyboardButton(button_text, callback_data=callback_data))
+                month_buttons.append(InlineKeyboardButton(button_text, callback_data=callback_data))
                 
             except Exception as month_error:
                 logger.error(f"Ошибка при обработке месяца {month_date}: {month_error}")
                 # Пропускаем проблемный месяц
                 continue
         
-        markup.add(InlineKeyboardButton("🔙 Назад", callback_data="main_menu"))
+        # Добавляем месяцы в клавиатуру по 2 в ряд
+        for i in range(0, len(month_buttons), 2):
+            if i + 1 < len(month_buttons):
+                # Добавляем два месяца в один ряд
+                markup.row(month_buttons[i], month_buttons[i + 1])
+            else:
+                # Последний месяц (если нечетное количество)
+                markup.row(month_buttons[i])
+        
+        # Добавляем кнопку "Назад" снизу по центру
+        markup.row(InlineKeyboardButton("🔙 Назад", callback_data="main_menu"))
         
         logger.info("Клавиатура создана, отправляем сообщение")
         
