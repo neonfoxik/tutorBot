@@ -1,0 +1,290 @@
+import uuid
+import requests
+import json
+from django.conf import settings
+from decimal import Decimal
+
+
+class YooKassaClient:
+    """Клиент для работы с API ЮKassa"""
+    
+    def __init__(self):
+        self.shop_id = settings.YOOKASSA_SHOP_ID
+        self.secret_key = settings.YOOKASSA_SECRET_KEY
+        self.test_mode = settings.YOOKASSA_TEST_MODE
+        
+        # URL для API ЮKassa (одинаковый для тестового и боевого режима)
+        self.base_url = "https://api.yookassa.ru/v3"
+        
+        self.auth = (self.shop_id, self.secret_key)
+    
+    def create_payment(self, amount, description, return_url=None, metadata=None):
+        """
+        Создает платеж в ЮKassa
+        
+        Args:
+            amount (Decimal): Сумма платежа
+            description (str): Описание платежа
+            return_url (str): URL для возврата после оплаты
+            metadata (dict): Дополнительные данные
+        
+        Returns:
+            dict: Ответ от API ЮKassa
+        """
+        url = f"{self.base_url}/payments"
+        
+        payment_data = {
+            "amount": {
+                "value": str(amount),
+                "currency": "RUB"
+            },
+            "confirmation": {
+                "type": "redirect",
+                "return_url": return_url or "https://t.me/your_bot_username"
+            },
+            "capture": True,
+            "description": description,
+            "receipt": {
+                "customer": {
+                    "email": "test@example.com"  # В реальном приложении берем из профиля пользователя
+                },
+                "items": [
+                    {
+                        "description": description,
+                        "amount": {
+                            "value": str(amount),
+                            "currency": "RUB"
+                        },
+                        "vat_code": 1,  # Код НДС (1 = без НДС)
+                        "quantity": "1"
+                    }
+                ]
+            }
+        }
+        
+        if metadata:
+            payment_data["metadata"] = metadata
+        
+        headers = {
+            "Idempotence-Key": str(uuid.uuid4()),
+            "Content-Type": "application/json"
+        }
+        
+        try:
+            print(f"Отправляем запрос к ЮKassa: {url}")
+            print(f"Данные платежа: {json.dumps(payment_data, ensure_ascii=False, indent=2)}")
+            
+            # Настройки для более надежного соединения
+            session = requests.Session()
+            
+            # Используем более простой подход, как в curl
+            try:
+                print("Отправляем запрос к ЮKassa...")
+                
+                # Добавляем User-Agent как в curl
+                headers['User-Agent'] = 'YooKassa-Bot/1.0'
+                
+                response = session.post(
+                    url,
+                    auth=self.auth,
+                    headers=headers,
+                    json=payment_data,
+                    timeout=(15, 45)  # Увеличиваем timeout
+                )
+                
+                print(f"✅ Запрос отправлен успешно")
+                
+            except requests.exceptions.SSLError as e:
+                print(f"❌ SSL ошибка: {e}")
+                return None
+            except requests.exceptions.ConnectionError as e:
+                print(f"❌ Ошибка соединения: {e}")
+                return None
+            except requests.exceptions.Timeout as e:
+                print(f"❌ Таймаут: {e}")
+                return None
+            except Exception as e:
+                print(f"❌ Неожиданная ошибка: {e}")
+                return None
+            
+            print(f"Статус ответа: {response.status_code}")
+            print(f"Заголовки ответа: {dict(response.headers)}")
+            
+            if response.status_code >= 400:
+                print(f"Ошибка API: {response.text}")
+                return None
+            
+            response.raise_for_status()
+            result = response.json()
+            print(f"Успешный ответ: {json.dumps(result, ensure_ascii=False, indent=2)}")
+            return result
+            
+        except requests.exceptions.ConnectTimeout:
+            print("❌ Таймаут соединения с ЮKassa")
+            return None
+        except requests.exceptions.ReadTimeout:
+            print("❌ Таймаут чтения ответа от ЮKassa")
+            return None
+        except requests.exceptions.SSLError as e:
+            print(f"❌ Ошибка SSL: {e}")
+            return None
+        except requests.exceptions.ConnectionError as e:
+            print(f"❌ Ошибка соединения: {e}")
+            return None
+        except requests.exceptions.RequestException as e:
+            print(f"❌ Ошибка при создании платежа: {e}")
+            print(f"Тип ошибки: {type(e).__name__}")
+            return None
+        except Exception as e:
+            print(f"❌ Неожиданная ошибка: {e}")
+            print(f"Тип ошибки: {type(e).__name__}")
+            return None
+    
+    def get_payment(self, payment_id):
+        """
+        Получает информацию о платеже
+        
+        Args:
+            payment_id (str): ID платежа в ЮKassa
+        
+        Returns:
+            dict: Информация о платеже
+        """
+        url = f"{self.base_url}/payments/{payment_id}"
+        
+        try:
+            response = requests.get(url, auth=self.auth)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            print(f"Ошибка при получении информации о платеже: {e}")
+            return None
+    
+    def capture_payment(self, payment_id, amount=None):
+        """
+        Подтверждает платеж
+        
+        Args:
+            payment_id (str): ID платежа в ЮKassa
+            amount (Decimal): Сумма к подтверждению (если None, то полная сумма)
+        
+        Returns:
+            dict: Ответ от API ЮKassa
+        """
+        url = f"{self.base_url}/payments/{payment_id}/capture"
+        
+        capture_data = {}
+        if amount is not None:
+            capture_data["amount"] = {
+                "value": str(amount),
+                "currency": "RUB"
+            }
+        
+        headers = {
+            "Idempotence-Key": str(uuid.uuid4()),
+            "Content-Type": "application/json"
+        }
+        
+        try:
+            response = requests.post(
+                url,
+                auth=self.auth,
+                headers=headers,
+                json=capture_data
+            )
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            print(f"Ошибка при подтверждении платежа: {e}")
+            return None
+    
+    def cancel_payment(self, payment_id):
+        """
+        Отменяет платеж
+        
+        Args:
+            payment_id (str): ID платежа в ЮKassa
+        
+        Returns:
+            dict: Ответ от API ЮKassa
+        """
+        url = f"{self.base_url}/payments/{payment_id}/cancel"
+        
+        headers = {
+            "Idempotence-Key": str(uuid.uuid4()),
+            "Content-Type": "application/json"
+        }
+        
+        try:
+            response = requests.post(
+                url,
+                auth=self.auth,
+                headers=headers,
+                json={}
+            )
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            print(f"Ошибка при отмене платежа: {e}")
+            return None
+
+
+def process_webhook(webhook_data):
+    """
+    Обработка уведомлений от ЮKassa
+    
+    Args:
+        webhook_data (dict): Данные уведомления
+    
+    Returns:
+        bool: True если уведомление успешно обработано
+    """
+    try:
+        event_type = webhook_data.get('event')
+        payment_data = webhook_data.get('object')
+        
+        if event_type == 'payment.succeeded':
+            # Платеж успешно завершен
+            payment_id = payment_data.get('id')
+            
+            # Здесь нужно обновить статус платежа в базе данных
+            from .models import Payment, PaymentHistory
+            
+            try:
+                payment = Payment.objects.get(yookassa_payment_id=payment_id)
+                payment.status = 'succeeded'
+                payment.payment_method = payment_data.get('payment_method', {})
+                payment.save()
+                
+                # Создаем запись в истории оплат
+                PaymentHistory.objects.create(
+                    user=payment.user,
+                    payment=payment,
+                    month=payment.payment_month,
+                    year=payment.payment_year,
+                    amount_paid=payment.amount,
+                    pricing_plan=payment.pricing_plan
+                )
+                
+                return True
+            except Payment.DoesNotExist:
+                print(f"Платеж {payment_id} не найден в базе данных")
+                return False
+        
+        elif event_type == 'payment.canceled':
+            # Платеж отменен
+            payment_id = payment_data.get('id')
+            
+            try:
+                payment = Payment.objects.get(yookassa_payment_id=payment_id)
+                payment.status = 'canceled'
+                payment.save()
+                return True
+            except Payment.DoesNotExist:
+                print(f"Платеж {payment_id} не найден в базе данных")
+                return False
+        
+        return True
+    except Exception as e:
+        print(f"Ошибка при обработке webhook: {e}")
+        return False 

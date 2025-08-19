@@ -1,0 +1,11 @@
+# sample_template_for Django
+
+
+BOT_TOKEN = 
+OWNER_ID =
+CHANNEL_NAME1 =
+CHANNEL_NAME2 = 
+CHANNEL_NAME3 =
+BOT_NAME =
+HOOK = 
+LOCAL = 
