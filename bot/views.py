@@ -98,38 +98,8 @@ def handle_payment_confirmation(call):
     from bot.handlers.payments import confirm_payment
     confirm_payment(call)
 
-
-@csrf_exempt
-@require_POST
-def yookassa_webhook(request: HttpRequest) -> JsonResponse:
-    """Обработка уведомлений от ЮKassa"""
-    try:
-        webhook_data = json.loads(request.body.decode('utf-8'))
-        
-        from bot.yookassa_client import process_webhook
-        from bot.handlers.payments import notify_payment_success
-        from bot.models import PaymentHistory
-        from bot.keyboards import MONTH_NAMES
-        
-        success = process_webhook(webhook_data)
-        
-        if success:
-            # Если это успешный платеж, отправляем уведомление пользователю
-            event_type = webhook_data.get('event')
-            if event_type == 'payment.succeeded':
-                payment_data = webhook_data.get('object')
-                metadata = payment_data.get('metadata', {})
-                
-                user_telegram_id = metadata.get('user_id')
-                month = int(metadata.get('month', 0))
-                year = int(metadata.get('year', 0))
-                amount = float(payment_data.get('amount', {}).get('value', 0))
-                
-                if user_telegram_id and month and year:
-                    notify_payment_success(user_telegram_id, month, year, amount)
-        
-        return JsonResponse({"message": "OK"}, status=200)
-    
-    except Exception as e:
-        logger.error(f"Ошибка при обработке webhook ЮKassa: {e}")
-        return JsonResponse({"message": "Error"}, status=500)
+@bot.callback_query_handler(func=lambda call: call.data.startswith("check_payment_"))
+def handle_payment_check(call):
+    """Обрабатывает проверку оплаты"""
+    from bot.handlers.payments import check_payment
+    check_payment(call)
