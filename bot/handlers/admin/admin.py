@@ -1,11 +1,19 @@
 from functools import wraps
-
+from datetime import datetime
 
 from django.conf import settings
 from telebot.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
-from bot.keyboards import ADMIN_MARKUP
+from bot.keyboards import (
+    ADMIN_MARKUP,
+    generate_students_pagination_keyboard,
+    generate_admin_payment_months_keyboard,
+    generate_student_info_keyboard,
+    generate_payment_history_keyboard
+)
 from bot import bot, logger
-from bot.models import User
+from bot.models import User, Payment, PaymentHistory
+from bot.pricing import get_price_by_class
+
 
 def admin_permission(func):
     """
@@ -50,38 +58,185 @@ def admin_permission_callback(func):
 def admin_menu(msg: Message):
     bot.send_message(msg.from_user.id, 'Админ панель', reply_markup=ADMIN_MARKUP)
 
+
 @admin_permission_callback
-def newsletter(call: CallbackQuery):
-    bot.send_message(call.from_user.id, 'Пожалуйста, отправьте текст для рассылки.')
-    bot.register_next_step_handler(call.message, handle_message)
+def handle_view_students(call: CallbackQuery):
+    """Показывает список учеников с пагинацией для просмотра"""
+    bot.edit_message_text(
+        chat_id=call.message.chat.id,
+        message_id=call.message.message_id,
+        text="Выберите ученика для просмотра информации:",
+        reply_markup=generate_students_pagination_keyboard()
+    )
 
 
-@admin_permission
-def handle_message(msg: Message):
-    users = User.objects.all()  # Получаем всех пользователей
+@admin_permission_callback
+def handle_students_page(call: CallbackQuery):
+    """Обработчик пагинации списка учеников"""
+    # Получаем номер страницы из callback_data
+    page = int(call.data.split('_')[2])
+    
+    bot.edit_message_text(
+        chat_id=call.message.chat.id,
+        message_id=call.message.message_id,
+        text="Выберите ученика для просмотра информации:",
+        reply_markup=generate_students_pagination_keyboard(page=page)
+    )
 
-    for user in users:
-        try:
-            if msg.forward_from or msg.forward_from_chat:
-                bot.forward_message(user.telegram_id, msg.chat.id, msg.message_id)
-            else:
-                if msg.content_type == 'text':
-                    bot.send_message(user.telegram_id, msg.text)
-                elif msg.content_type == 'video':
-                    bot.send_video(user.telegram_id, msg.video.file_id)
-                elif msg.content_type == 'sticker':
-                    bot.send_sticker(user.telegram_id, msg.sticker.file_id)
-                elif msg.content_type == 'document':
-                    bot.send_document(user.telegram_id, msg.document.file_id)
-                elif msg.content_type == 'photo':
-                    bot.send_photo(user.telegram_id, msg.photo[-1].file_id)
-                elif msg.content_type == 'audio':
-                    bot.send_audio(user.telegram_id, msg.audio.file_id)
-                elif msg.content_type == 'voice':
-                    bot.send_voice(user.telegram_id, msg.voice.file_id)
-                else:
-                    logger.warning(f"Неизвестный тип сообщения: {msg.content_type}")
 
-        except Exception as e:
-            logger.warning(f'Пользователь {user.telegram_id} заблокировал бота или произошла другая ошибка: {e}')
-    bot.send_message(msg.from_user.id, '✅ Сообщение успешно отправлено всем пользователям.')
+@admin_permission_callback
+def handle_select_student(call: CallbackQuery):
+    """Обработчик выбора ученика для просмотра информации"""
+    # Получаем ID ученика из callback_data
+    student_id = call.data.split('_')[2]
+    student = User.objects.get(telegram_id=student_id)
+    
+    # Получаем информацию об оплатах ученика
+    payments = PaymentHistory.objects.filter(user=student, status='completed').order_by('year', 'month')
+    
+    # Определяем текущий месяц и год
+    current_date = datetime.now()
+    current_month = current_date.month
+    current_year = current_date.year
+    
+    # Проверяем, оплачен ли текущий месяц
+    current_month_paid = payments.filter(month=current_month, year=current_year).exists()
+    
+    # Находим последний оплаченный месяц
+    last_paid_month = None
+    if payments.exists():
+        last_payment = payments.last()
+        last_paid_month = f"{last_payment.month}/{last_payment.year}"
+    
+    # Формируем текст сообщения
+    message_text = f"👤 Информация об ученике:\n\n"
+    message_text += f"Имя: {student.first_name}\n"
+    if student.last_name:
+        message_text += f"Фамилия: {student.last_name}\n"
+    message_text += f"Telegram ID: {student.telegram_id}\n"
+    message_text += f"Дата регистрации: {student.created_at.strftime('%d.%m.%Y')}\n\n"
+    
+    message_text += f"💰 Статус оплаты:\n"
+    message_text += f"Текущий месяц ({current_month}/{current_year}): "
+    message_text += "✅ Оплачен" if current_month_paid else "❌ Не оплачен"
+    message_text += f"\nПоследний оплаченный месяц: {last_paid_month or 'Нет оплат'}\n\n"
+    
+    message_text += f"📊 Всего оплат: {payments.count()}"
+    
+    bot.edit_message_text(
+        chat_id=call.message.chat.id,
+        message_id=call.message.message_id,
+        text=message_text,
+        reply_markup=generate_student_info_keyboard(student_id)
+    )
+
+
+@admin_permission_callback
+def handle_view_payment_history(call: CallbackQuery):
+    """Показывает историю оплат ученика"""
+    # Получаем ID ученика из callback_data
+    student_id = call.data.split('_')[3]
+    student = User.objects.get(telegram_id=student_id)
+    
+    # Получаем все оплаты ученика
+    payments = PaymentHistory.objects.filter(user=student, status='completed').order_by('year', 'month')
+    
+    if not payments.exists():
+        message_text = f"📊 История оплат ученика {student.first_name}:\n\n"
+        message_text += "У ученика пока нет оплат."
+    else:
+        message_text = f"📊 История оплат ученика {student.first_name}:\n\n"
+        
+        for payment in payments:
+            month_name = {
+                1: "Январь", 2: "Февраль", 3: "Март", 4: "Апрель",
+                5: "Май", 6: "Июнь", 7: "Июль", 8: "Август",
+                9: "Сентябрь", 10: "Октябрь", 11: "Ноябрь", 12: "Декабрь"
+            }[payment.month]
+            
+            message_text += f"📅 {month_name} {payment.year}\n"
+            message_text += f"💰 Сумма: {payment.amount} ₽\n"
+            message_text += f"💳 Тип: {payment.payment_type}\n"
+            message_text += f"📝 Дата: {payment.created_at.strftime('%d.%m.%Y %H:%M')}\n\n"
+    
+    bot.edit_message_text(
+        chat_id=call.message.chat.id,
+        message_id=call.message.message_id,
+        text=message_text,
+        reply_markup=generate_payment_history_keyboard(student_id)
+    )
+
+
+@admin_permission_callback
+def handle_mark_payment_for_student(call: CallbackQuery):
+    """Показывает выбор месяца для отметки оплаты конкретного ученика"""
+    # Получаем ID ученика из callback_data
+    student_id = call.data.split('_')[3]
+    student = User.objects.get(telegram_id=student_id)
+    
+    bot.edit_message_text(
+        chat_id=call.message.chat.id,
+        message_id=call.message.message_id,
+        text=f"Выберите месяц оплаты для ученика {student.first_name} {student.last_name or ''}:",
+        reply_markup=generate_admin_payment_months_keyboard(student_id)
+    )
+
+
+@admin_permission_callback
+def handle_mark_student_payment(call: CallbackQuery):
+    """Показывает список учеников с пагинацией для отметки оплаты"""
+    bot.edit_message_text(
+        chat_id=call.message.chat.id,
+        message_id=call.message.message_id,
+        text="Выберите ученика для отметки оплаты:",
+        reply_markup=generate_students_pagination_keyboard()
+    )
+
+
+@admin_permission_callback
+def handle_admin_mark_payment(call: CallbackQuery):
+    """Обработчик отметки оплаты администратором"""
+    # Разбираем callback_data
+    _, _, student_id, month, year = call.data.split('_')
+    student = User.objects.get(telegram_id=student_id)
+    
+    # Получаем цену занятия для ученика
+    price_info = get_price_by_class(student.course_or_class)
+    
+    if price_info:
+        lesson_price = price_info['price']
+        class_name = price_info['name']
+    else:
+        # Если не удалось определить цену, используем базовую
+        lesson_price = 5000
+        class_name = "стандартный тариф"
+    
+    # Создаем запись об оплате
+    payment = PaymentHistory.objects.create(
+        user=student,
+        amount=lesson_price,  # Используем индивидуальную цену занятия
+        payment_type='cash',  # Тип оплаты - наличные
+        status='completed',  # Статус - завершено
+        month=int(month),
+        year=int(year)
+    )
+    
+    # Отправляем сообщение админу
+    bot.edit_message_text(
+        chat_id=call.message.chat.id,
+        message_id=call.message.message_id,
+        text=f"✅ Оплата успешно отмечена!\n\n"
+             f"Ученик: {student.first_name} {student.last_name or ''}\n"
+             f"Класс: {class_name}\n"
+             f"Месяц: {month}/{year}\n"
+             f"Сумма: {lesson_price} ₽",
+        reply_markup=ADMIN_MARKUP
+    )
+    
+    # Отправляем уведомление ученику
+    bot.send_message(
+        student.telegram_id,
+        f"✅ Администратор отметил вашу оплату за {month}/{year}\n"
+        f"Тариф: {class_name}\n"
+        f"Сумма: {lesson_price} ₽"
+    )

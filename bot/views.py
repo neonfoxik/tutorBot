@@ -4,46 +4,82 @@ from traceback import format_exc
 from asgiref.sync import sync_to_async
 from bot.handlers import *
 from django.conf import settings
-from django.http import HttpRequest, JsonResponse
+from django.http import HttpRequest, JsonResponse, HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 from telebot.apihelper import ApiTelegramException
 from telebot.types import Update
 
 from bot import bot, logger
+from bot.handlers.admin.admin import (
+    admin_menu,
+    handle_view_students,
+    handle_students_page,
+    handle_select_student,
+    handle_view_payment_history,
+    handle_mark_payment_for_student,
+    handle_mark_student_payment,
+    handle_admin_mark_payment
+)
+
+# Регистрируем обработчики команд
+bot.register_message_handler(admin_menu, commands=['admin'])
+
+# Регистрируем callback обработчики для просмотра учеников
+bot.register_callback_query_handler(
+    handle_view_students,
+    func=lambda call: call.data == "view_students"
+)
+
+bot.register_callback_query_handler(
+    handle_students_page,
+    func=lambda call: call.data.startswith("students_page_")
+)
+
+bot.register_callback_query_handler(
+    handle_select_student,
+    func=lambda call: call.data.startswith("select_student_")
+)
+
+bot.register_callback_query_handler(
+    handle_view_payment_history,
+    func=lambda call: call.data.startswith("view_payment_history_")
+)
+
+bot.register_callback_query_handler(
+    handle_mark_payment_for_student,
+    func=lambda call: call.data.startswith("mark_payment_for_student_")
+)
+
+# Регистрируем callback обработчики для отметки оплаты
+bot.register_callback_query_handler(
+    handle_mark_student_payment,
+    func=lambda call: call.data == "mark_student_payment"
+)
+
+bot.register_callback_query_handler(
+    handle_admin_mark_payment,
+    func=lambda call: call.data.startswith("admin_mark_payment_")
+)
+
+@csrf_exempt
+def index(request):
+    if request.method == "POST":
+        json_str = request.body.decode('UTF-8')
+        update = telebot.types.Update.de_json(json_str)
+        bot.process_new_updates([update])
+        return HttpResponse("")
+    return HttpResponse("Bot is running")
 
 
-@require_GET
-def set_webhook(request: HttpRequest) -> JsonResponse:
-    """Setting webhook."""
-    bot.set_webhook(url=f"{settings.HOOK}/bot/{settings.BOT_TOKEN}")
-    bot.send_message(settings.OWNER_ID, "webhook set")
-    return JsonResponse({"message": "OK"}, status=200)
+def set_webhook(request):
+    bot.remove_webhook()
+    bot.set_webhook(url=settings.WEBHOOK_URL)
+    return HttpResponse("Webhook was set")
 
 
 @require_GET
 def status(request: HttpRequest) -> JsonResponse:
-    return JsonResponse({"message": "OK"}, status=200)
-
-
-@csrf_exempt
-@require_POST
-@sync_to_async
-def index(request: HttpRequest) -> JsonResponse:
-    if request.META.get("CONTENT_TYPE") != "application/json":
-        return JsonResponse({"message": "Bad Request"}, status=403)
-
-    json_string = request.body.decode("utf-8")
-    update = Update.de_json(json_string)
-    try:
-        bot.process_new_updates([update])
-    except ApiTelegramException as e:
-        logger.error(f"Telegram exception. {e} {format_exc()}")
-    except ConnectionError as e:
-        logger.error(f"Connection error. {e} {format_exc()}")
-    except Exception as e:
-        bot.send_message(settings.OWNER_ID, f'Error from index: {e}')
-        logger.error(f"Unhandled exception. {e} {format_exc()}")
     return JsonResponse({"message": "OK"}, status=200)
 
 

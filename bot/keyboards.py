@@ -52,8 +52,9 @@ btn1 = InlineKeyboardButton("⬅️ Назад ⬅️", callback_data="main_menu
 UNIVERSAL_BUTTONS.add(btn1)
 
 ADMIN_MARKUP = InlineKeyboardMarkup()
-btn1 = InlineKeyboardButton("📢 Рассылка 📢", callback_data="newsletter")
-ADMIN_MARKUP.add(btn1)
+btn1 = InlineKeyboardButton("👥 Просмотр оплаты учеников", callback_data="view_students")
+btn2 = InlineKeyboardButton("💵 Отметить оплату ученика", callback_data="mark_student_payment")
+ADMIN_MARKUP.add(btn1).add(btn2)
 
 # Названия месяцев на русском языке
 MONTH_NAMES = {
@@ -61,6 +62,76 @@ MONTH_NAMES = {
     5: "Май", 6: "Июнь", 7: "Июль", 8: "Август",
     9: "Сентябрь", 10: "Октябрь", 11: "Ноябрь", 12: "Декабрь"
 }
+
+def generate_students_pagination_keyboard(page=1, students_per_page=8):
+    """
+    Генерирует клавиатуру с пагинацией учеников
+    """
+    markup = InlineKeyboardMarkup()
+    from bot.models import User
+    
+    # Получаем всех учеников (не админов)
+    students = User.objects.filter(is_admin=False)
+    total_students = students.count()
+    total_pages = (total_students + students_per_page - 1) // students_per_page
+    
+    # Получаем учеников для текущей страницы
+    start_idx = (page - 1) * students_per_page
+    end_idx = start_idx + students_per_page
+    current_students = students[start_idx:end_idx]
+    
+    # Добавляем кнопки с учениками
+    for student in current_students:
+        button_text = f"{student.first_name} {student.last_name or ''}"
+        callback_data = f"select_student_{student.telegram_id}"
+        markup.add(InlineKeyboardButton(button_text, callback_data=callback_data))
+    
+    # Добавляем кнопки навигации
+    nav_buttons = []
+    if page > 1:
+        nav_buttons.append(InlineKeyboardButton("⬅️", callback_data=f"students_page_{page-1}"))
+    if page < total_pages:
+        nav_buttons.append(InlineKeyboardButton("➡️", callback_data=f"students_page_{page+1}"))
+    if nav_buttons:
+        markup.add(*nav_buttons)
+    
+    # Добавляем кнопку "Назад"
+    markup.add(InlineKeyboardButton("⬅️ Назад", callback_data="admin_menu"))
+    
+    return markup
+
+def generate_admin_payment_months_keyboard(student_id):
+    """
+    Генерирует клавиатуру с месяцами для админской отметки оплаты
+    """
+    markup = InlineKeyboardMarkup()
+    current_date = datetime.now()
+    current_month = current_date.month
+    current_year = current_date.year
+    
+    buttons = []
+    
+    # Генерируем 12 месяцев начиная с текущего
+    for i in range(12):
+        month = ((current_month - 1 + i) % 12) + 1
+        year = current_year + ((current_month + i - 1) // 12)
+        
+        month_name = MONTH_NAMES[month]
+        button_text = f"{month_name} {year}"
+        callback_data = f"admin_mark_payment_{student_id}_{month}_{year}"
+        
+        buttons.append(InlineKeyboardButton(button_text, callback_data=callback_data))
+    
+    # Размещаем кнопки по 3 в ряд
+    for i in range(0, len(buttons), 3):
+        row_buttons = buttons[i:i+3]
+        markup.add(*row_buttons)
+    
+    # Кнопка назад к списку учеников
+    back_btn = InlineKeyboardButton("⬅️ Назад к списку учеников", callback_data="mark_student_payment")
+    markup.add(back_btn)
+    
+    return markup
 
 def generate_payment_months_keyboard():
     """
@@ -141,5 +212,37 @@ def generate_check_payment_keyboard(payment_id, month, year):
     back_btn = InlineKeyboardButton("⬅️ Назад", callback_data="payment_menu")
     
     markup.add(pay_btn).add(check_btn).add(back_btn)
+    
+    return markup
+
+def generate_student_info_keyboard(student_id):
+    """
+    Генерирует клавиатуру с информацией об ученике и его оплатах
+    """
+    markup = InlineKeyboardMarkup()
+    
+    # Кнопка для отметки оплаты
+    mark_payment_btn = InlineKeyboardButton("💵 Отметить оплату", callback_data=f"mark_payment_for_student_{student_id}")
+    
+    # Кнопка для просмотра истории оплат
+    history_btn = InlineKeyboardButton("📊 История оплат", callback_data=f"view_payment_history_{student_id}")
+    
+    # Кнопка назад к списку учеников
+    back_btn = InlineKeyboardButton("⬅️ Назад к списку", callback_data="view_students")
+    
+    markup.add(mark_payment_btn).add(history_btn).add(back_btn)
+    
+    return markup
+
+def generate_payment_history_keyboard(student_id):
+    """
+    Генерирует клавиатуру для просмотра истории оплат ученика
+    """
+    markup = InlineKeyboardMarkup()
+    
+    # Кнопка назад к информации об ученике
+    back_btn = InlineKeyboardButton("⬅️ Назад к ученику", callback_data=f"view_student_{student_id}")
+    
+    markup.add(back_btn)
     
     return markup
