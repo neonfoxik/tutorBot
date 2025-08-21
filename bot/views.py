@@ -65,18 +65,105 @@ bot.register_callback_query_handler(
 @csrf_exempt
 def index(request):
     if request.method == "POST":
-        json_str = request.body.decode('UTF-8')
-        update = telebot.types.Update.de_json(json_str)
-        bot.process_new_updates([update])
-        return HttpResponse("")
+        try:
+            json_str = request.body.decode('UTF-8')
+            update = telebot.types.Update.de_json(json_str)
+            bot.process_new_updates([update])
+            return HttpResponse("OK")
+        except Exception as e:
+            logger.error(f"Ошибка при обработке webhook: {e}")
+            return HttpResponse("Error", status=500)
     return HttpResponse("Bot is running")
 
 @require_GET
 def set_webhook(request: HttpRequest) -> JsonResponse:
     """Setting webhook."""
-    bot.set_webhook(url=f"{settings.HOOK}/bot/{settings.BOT_TOKEN}")
-    bot.send_message(settings.OWNER_ID, "webhook set")
-    return JsonResponse({"message": "OK"}, status=200)
+    try:
+        if not settings.HOOK or not settings.BOT_TOKEN:
+            return JsonResponse({
+                "error": "HOOK или BOT_TOKEN не настроены", 
+                "hook": bool(settings.HOOK),
+                "bot_token": bool(settings.BOT_TOKEN)
+            }, status=400)
+        
+        webhook_url = f"{settings.HOOK}/bot/{settings.BOT_TOKEN}"
+        
+        # Проверяем, доступен ли домен
+        import socket
+        try:
+            domain = settings.HOOK.replace('https://', '').replace('http://', '').split('/')[0]
+            socket.gethostbyname(domain)
+        except socket.gaierror:
+            return JsonResponse({
+                "error": f"Не удается разрешить домен: {domain}",
+                "webhook_url": webhook_url
+            }, status=400)
+        
+        # Устанавливаем webhook
+        bot.set_webhook(url=webhook_url)
+        
+        # Отправляем уведомление владельцу (если возможно)
+        if settings.OWNER_ID:
+            try:
+                bot.send_message(settings.OWNER_ID, f"Webhook установлен: {webhook_url}")
+            except Exception as e:
+                logger.warning(f"Не удалось отправить сообщение владельцу: {e}")
+        
+        return JsonResponse({
+            "message": "Webhook успешно установлен", 
+            "url": webhook_url,
+            "hook": settings.HOOK,
+            "bot_token": f"{settings.BOT_TOKEN[:10]}..." if settings.BOT_TOKEN else None
+        }, status=200)
+            
+    except ApiTelegramException as e:
+        error_msg = str(e)
+        logger.error(f"Ошибка Telegram API при установке webhook: {e}")
+        
+        # Анализируем ошибку
+        if "Failed to resolve host" in error_msg:
+            return JsonResponse({
+                "error": "Ошибка разрешения домена. Проверьте настройки DNS.",
+                "webhook_url": webhook_url if 'webhook_url' in locals() else None,
+                "details": error_msg
+            }, status=400)
+        elif "bad webhook" in error_msg:
+            return JsonResponse({
+                "error": "Некорректный webhook URL",
+                "webhook_url": webhook_url if 'webhook_url' in locals() else None,
+                "details": error_msg
+            }, status=400)
+        else:
+            return JsonResponse({
+                "error": f"Ошибка Telegram API: {error_msg}",
+                "webhook_url": webhook_url if 'webhook_url' in locals() else None
+            }, status=500)
+            
+    except Exception as e:
+        logger.error(f"Неожиданная ошибка при установке webhook: {e}")
+        return JsonResponse({
+            "error": f"Внутренняя ошибка: {str(e)}",
+            "webhook_url": webhook_url if 'webhook_url' in locals() else None
+        }, status=500)
+
+@require_GET
+def webhook_info(request: HttpRequest) -> JsonResponse:
+    """Информация о webhook без его установки."""
+    try:
+        if settings.HOOK and settings.BOT_TOKEN:
+            webhook_url = f"{settings.HOOK}/bot/{settings.BOT_TOKEN}"
+            return JsonResponse({
+                "message": "Webhook информация",
+                "hook": settings.HOOK,
+                "bot_token": f"{settings.BOT_TOKEN[:10]}..." if settings.BOT_TOKEN else None,
+                "webhook_url": webhook_url,
+                "owner_id": settings.OWNER_ID
+            }, status=200)
+        else:
+            return JsonResponse({"error": "HOOK или BOT_TOKEN не настроены"}, status=400)
+    except Exception as e:
+        logger.error(f"Ошибка при получении информации о webhook: {e}")
+        return JsonResponse({"error": f"Внутренняя ошибка: {e}"}, status=500)
 
 @require_GET
 def status(request: HttpRequest) -> JsonResponse:
