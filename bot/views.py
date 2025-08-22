@@ -9,6 +9,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 from telebot.apihelper import ApiTelegramException
 from telebot.types import Update
+import telebot
 
 from bot import bot, logger
 from bot.handlers.admin.admin import (
@@ -75,14 +76,42 @@ def index(request):
 @require_GET
 def set_webhook(request: HttpRequest) -> JsonResponse:
     """Setting webhook."""
-    bot.set_webhook(url=f"{settings.HOOK}/bot/{settings.BOT_TOKEN}")
-    bot.send_message(settings.OWNER_ID, "webhook set")
-    return JsonResponse({"message": "OK"}, status=200)
+    try:
+        bot.set_webhook(url=f"{settings.HOOK}/bot/{settings.BOT_TOKEN}")
+        bot.send_message(settings.OWNER_ID, "webhook set")
+        return JsonResponse({"message": "Webhook set successfully"}, status=200)
+    except Exception as e:
+        logger.error(f"Error setting webhook: {e}")
+        return JsonResponse({"message": f"Error setting webhook: {str(e)}"}, status=500)
 
 
 @require_GET
 def status(request: HttpRequest) -> JsonResponse:
     return JsonResponse({"message": "OK"}, status=200)
+
+
+@require_GET
+def start_polling(request: HttpRequest) -> JsonResponse:
+    """Start bot with long polling instead of webhook."""
+    try:
+        # Удаляем webhook если он был установлен
+        bot.remove_webhook()
+        
+        # Запускаем long polling в фоне
+        import threading
+        def run_polling():
+            try:
+                bot.infinity_polling(timeout=10, long_polling_timeout=5)
+            except Exception as e:
+                logger.error(f"Polling error: {e}")
+        
+        polling_thread = threading.Thread(target=run_polling, daemon=True)
+        polling_thread.start()
+        
+        return JsonResponse({"message": "Bot started with long polling"}, status=200)
+    except Exception as e:
+        logger.error(f"Error starting polling: {e}")
+        return JsonResponse({"message": f"Error starting polling: {str(e)}"}, status=500)
 
 
 """Common"""
