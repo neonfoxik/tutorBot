@@ -60,6 +60,17 @@ def admin_menu(msg: Message):
 
 
 @admin_permission_callback
+def admin_menu_callback(call: CallbackQuery):
+    """Обработчик для возврата в админ меню из callback"""
+    bot.edit_message_text(
+        chat_id=call.message.chat.id,
+        message_id=call.message.message_id,
+        text='Админ панель',
+        reply_markup=ADMIN_MARKUP
+    )
+
+
+@admin_permission_callback
 def handle_view_students(call: CallbackQuery):
     """Показывает список учеников с пагинацией для просмотра"""
     bot.edit_message_text(

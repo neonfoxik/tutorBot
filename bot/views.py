@@ -14,6 +14,7 @@ import telebot
 from bot import bot, logger
 from bot.handlers.admin.admin import (
     admin_menu,
+    admin_menu_callback,
     handle_view_students,
     handle_students_page,
     handle_select_student,
@@ -152,6 +153,9 @@ def handle_class_selection(call):
 payment_menu = bot.callback_query_handler(lambda c: c.data == "payment_menu")(payment_menu)
 start_payment = bot.callback_query_handler(lambda c: c.data == "start_payment")(start_payment)
 payment_history = bot.callback_query_handler(lambda c: c.data == "payment_history")(payment_history)
+
+# Обработчик для возврата в админ меню
+admin_menu_callback_handler = bot.callback_query_handler(lambda c: c.data == "admin_menu")(admin_menu_callback)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("pay_month_"))
 def handle_payment_month_selection(call):
