@@ -9,11 +9,11 @@ import logging
 logger = logging.getLogger(__name__)
 
 class Command(BaseCommand):
-    help = 'Отправляет напоминания об оплате за текущий месяц всем пользователям'
+    help = 'Отправляет напоминания об оплате за следующий месяц всем пользователям'
 
     def handle(self, *args, **options):
         current_date = timezone.now()
-        current_month = current_date.month
+        current_month = current_date.month + 1
         current_year = current_date.year
         
         # Получаем всех зарегистрированных пользователей (не админов)
@@ -29,9 +29,10 @@ class Command(BaseCommand):
                     user=user,
                     month=current_month,
                     year=current_year,
-                    status='completed'
+                    payment__status='succeeded'
                 ).exists()
-                
+
+
                 if not is_paid:
                     # Получаем цену для конкретного ученика
                     price_info = get_price_by_class(user.course_or_class)
@@ -47,8 +48,8 @@ class Command(BaseCommand):
                     # Отправляем напоминание
                     message_text = (
                         f"🔔 Напоминание об оплате\n\n"
-                        f"Здравствуйте, {user.first_name or 'дорогой ученик'}!\n\n"
-                        f"Напоминаем, что необходимо оплатить занятия за {current_month}/{current_year}.\n"
+                        f"Здравствуйте, {user.full_name or 'дорогой ученик'}!\n\n"
+                        f"Напоминаем, что необходимо оплатить занятия за {str(current_month).rjust(2, '0')}.{current_year}.\n"
                         f"Своевременная оплата обеспечивает непрерывность обучения.\n\n"
                         f"📚 Тариф: {class_name}\n"
                         f"💰 Сумма к оплате: {price} ₽\n\n"
@@ -61,7 +62,7 @@ class Command(BaseCommand):
                     self.stdout.write(f"✅ Напоминание отправлено пользователю {user.telegram_id} (класс: {user.course_or_class}, цена: {price} ₽)")
                     
                 else:
-                    self.stdout.write(f"ℹ️ Пользователь {user.telegram_id} уже оплатил текущий месяц")
+                    self.stdout.write(f"ℹ️ Пользователь {user.telegram_id} уже оплатил следующий месяц")
                     
             except Exception as e:
                 logger.error(f"Ошибка при отправке напоминания пользователю {user.telegram_id}: {e}")
