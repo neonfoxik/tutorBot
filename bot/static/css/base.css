@@ -1,0 +1,153 @@
+html,body,div,span,applet,object,iframe,h1,h2,h3,h4,h5,h6,p,blockquote,pre,a,abbr,acronym,address,big,cite,code,del,dfn,em,img,ins,kbd,q,s,samp,small,strike,strong,sub,sup,tt,var,b,u,i,center,dl,dt,dd,ol,ul,li,fieldset,form,label,legend,table,caption,tbody,tfoot,thead,tr,th,td,article,aside,canvas,details,embed,figure,figcaption,footer,header,hgroup,menu,nav,output,ruby,section,summary,time,mark,audio,video{margin:0;padding:0;border:0;font-size:100%;font:inherit;vertical-align:baseline}
+article,aside,details,figcaption,figure,footer,header,hgroup,menu,nav,section{display:block}
+html{height:100%}
+body{line-height:1}
+ol,ul{list-style:none}
+blockquote,q{quotes:none}
+blockquote:before,blockquote:after,q:before,q:after{content:'';content:none}
+table{border-collapse:collapse;border-spacing:0}
+
+
+@font-face {
+    font-family: 'Montserrat-Regular';
+    src: url('../fonts/Montserrat-Regular.ttf') format('truetype');
+}
+
+@font-face {
+    font-family: 'Montserrat-SemiBold';
+    src: url('../fonts/Montserrat-SemiBold.ttf') format('truetype');
+}
+
+@font-face {
+    font-family: 'Montserrat-Black';
+    src: url('../fonts/Montserrat-Black.ttf') format('truetype');
+}
+
+
+.payment-statistics {
+    padding: 2vh 5vw;
+    display: flex;
+    flex-direction: column;
+    gap: 2vh;
+    font-family: 'Montserrat-Regular';
+    font-weight: 500;
+    font-size: 18px;
+}
+
+.payment-title {
+    font-family: 'Montserrat-Black';
+    font-size: 24px;
+    color: rgb(100, 100, 100);
+    text-align: center;
+}
+
+.year {
+    display: flex;
+    flex-direction: column;
+    gap: 2vh;
+    position: relative;
+}
+
+.year__months {
+    display: flex;
+    flex-direction: column;
+    gap: 2vh;
+}
+
+.year__title {
+    text-align: center;
+    background-color: rgb(80, 80, 80);
+    color: white;
+    padding: 1.5vh 0;
+    font-family: 'Montserrat-SemiBold';
+    border-radius: 5px;
+    box-sizing: border-box;
+    font-size: 22px;
+}
+
+.year_now .year__title {
+    border: rgba(223, 74, 74, .7) solid 5px;
+}
+
+.month {
+    display: flex;
+    flex-direction: column;
+}
+
+.month__top-part {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    padding: 1.5vh 5vw;
+    color: white;
+    border-radius: 5px;
+    background-color: rgb(130, 130, 130);
+    font-family: 'Montserrat-SemiBold';
+}
+
+.month_paid .month__top-part {
+    background-color: rgb(102, 165, 81);
+}
+
+.month_now .month__top-part {
+    border: rgba(223, 74, 74, .7) solid 5px;
+}
+
+
+.month__payers {
+    display: flex;
+    flex-direction: column;
+    gap: 10px
+}
+
+
+.payment {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 1vh 5vw;
+    margin-top: 1vh;
+    border-radius: 5px;
+    border: 3px rgb(130, 130, 130) solid;
+    display: flex;
+    flex-direction: column;
+}
+
+.payment__title {
+    color: rgb(80, 80, 80);
+    font-family: 'Montserrat-SemiBold';
+}
+
+.payment__subtitle {
+    font-size: 14px;
+    font-family: 'Montserrat-SemiBold';
+}
+
+.payment__user {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.payment__info {
+    display: flex;
+    gap: 5px;
+    align-items: end;
+    font-size: 16px;
+}
+
+
+@media (min-width: 990px) {
+    .month__payers {
+        flex-direction: row;
+        gap: 15px;
+        flex-wrap: wrap;
+        justify-content: space-between;
+    }
+
+    .payment {
+        min-width: 23vw;
+        padding: 2vh 2vw;
+    }
+    
+}

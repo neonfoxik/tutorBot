@@ -1,7 +1,9 @@
+from datetime import datetime
 import json
 from traceback import format_exc
 
 from asgiref.sync import sync_to_async
+from django.shortcuts import render
 from bot.handlers import *
 from django.conf import settings
 from django.http import HttpRequest, JsonResponse, HttpResponse
@@ -23,6 +25,8 @@ from bot.handlers.admin.admin import (
     handle_mark_student_payment,
     handle_admin_mark_payment
 )
+
+from .models import PaymentHistory
 
 # Регистрируем обработчики команд
 bot.register_message_handler(admin_menu, commands=['admin'])
@@ -63,6 +67,53 @@ bot.register_callback_query_handler(
     handle_admin_mark_payment,
     func=lambda call: call.data.startswith("admin_mark_payment_")
 )
+
+
+def payment_info(request):
+    EDUCATION_CHOICES = {
+        'school': 'Школа',
+        'university': 'ВУЗ'
+    }
+    all_payments = PaymentHistory.objects.all().order_by('year', 'month')
+    years = set(PaymentHistory.objects.values_list('year', flat=True)) 
+    months = list(map(lambda x: str(x).rjust(2, '0'), set(PaymentHistory.objects.values_list('month', flat=True))))
+    
+    all_info = []
+
+    for year in years:
+        year_info = {
+            'date': year,
+            'months': [
+            {'title': 'Январь', 'id': 1, 'payers': [], 'payers_count': 0, 'is_paid': False}, 
+            {'title': 'Февраль', 'id': 2, 'payers': [], 'payers_count': 0, 'is_paid': False}, 
+            {'title': 'Март', 'id': 3, 'payers': [], 'payers_count': 0, 'is_paid': False}, 
+            {'title': 'Апрель', 'id': 4, 'payers': [], 'payers_count': 0, 'is_paid': False}, 
+            {'title': 'Май', 'id': 5, 'payers': [], 'payers_count': 0, 'is_paid': False},
+            {'title': 'Июнь', 'id': 6, 'payers': [], 'payers_count': 0, 'is_paid': False}, 
+            {'title': 'Июль', 'id': 7, 'payers': [], 'payers_count': 0, 'is_paid': False}, 
+            {'title': 'Август', 'id': 8, 'payers': [], 'payers_count': 0, 'is_paid': False}, 
+            {'title': 'Сентябрь', 'id': 9, 'payers': [], 'payers_count': 0, 'is_paid': False}, 
+            {'title': 'Октябрь', 'id': 10, 'payers': [], 'payers_count': 0, 'is_paid': False}, 
+            {'title': 'Ноябрь', 'id': 11, 'payers': [], 'payers_count': 0, 'is_paid': False}, 
+            {'title': 'Декабрь', 'id': 12, 'payers': [], 'payers_count': 0, 'is_paid': False}
+        ]}
+
+        for month in year_info['months']:
+            payers_info = all_payments.filter(month=month['id'], year=year)
+            if payers_info.count() > 0:
+                month['is_paid'] = True
+                month['payers_count'] = payers_info.count()
+                for payer in payers_info:
+                    payer.user.education_type = EDUCATION_CHOICES[payer.user.education_type]
+                    month['payers'].append(payer)
+        all_info.append(year_info)
+        
+    return render(request, 'templates_info.html', context={
+        'all_info': all_info,
+        'now_year': datetime.now().year,
+        'now_month': datetime.now().month,
+    })
+
 
 @csrf_exempt
 def index(request):

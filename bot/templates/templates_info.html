@@ -1,0 +1,58 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <link rel="stylesheet" href="{% static 'css/base.css' %}">
+        <title>🗓️ Информация о платежах 🗓️</title>
+    </head>
+
+    <body>
+        <section class="payment-statistics">
+            <h1 class="payment-title">Статистика оплат</h1>
+            {% for year in all_info %}
+                <div class="year {% if now_year == year.date %}year_now{% endif %}">
+                    <h2 class="year__title">{{ year.date }} год</h2>
+                    <div class="year__months">
+                        {% for month in year.months %}
+                            <div class="month {% if now_month == month.id %}month_now{% endif %} {% if month.is_paid %}month_paid{% else %}month_not-paid{% endif %}">
+                                <div class="month__top-part">
+                                    <h3 class="month__title">{{ month.title }}</h3>
+                                    <div class="month__payers-count">Оплат: {{ month.payers_count }}</div>
+                                </div>
+                                {% if month.is_paid %}
+                                <div class="month__payers">
+                                    {% for payer in month.payers %}
+                                        <div class="payment">
+                                            <h4 class="payment__title">Платёж</h4>
+                                            <div class="payment__user">
+                                                <div class="payment__info">
+                                                    <div class="payment__subtitle">Пользователь:</div>
+                                                    {{ payer.user.full_name }}
+                                                </div>
+                                                <div class="payment__info">
+                                                    <div class="payment__subtitle">Тип обучения:</div> 
+                                                    {{ payer.user.education_type }} {{ payer.user.course_or_class }} 
+                                                    <div class="payment__subtitle">курс/класс</div>
+                                                </div>
+                                            </div>
+                                            <div class="payment__payment">
+                                                <div class="payment__info">
+                                                    <div class="payment__subtitle">Сумма:</div>
+                                                    {{ payer.amount_paid }} ₽
+                                                </div>
+                                            </div>
+                                        </div>
+                                    {% endfor %}
+                                </div>
+                                {% endif %}
+                            </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                <div class="year-delimiter"></div>
+            {% endfor %}
+        </section>
+    </body>
+</html>
