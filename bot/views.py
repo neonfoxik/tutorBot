@@ -72,10 +72,12 @@ def index(request):
     return HttpResponse("Bot is running")
 
 
-def set_webhook(request):
-    bot.remove_webhook()
-    bot.set_webhook(url=settings.WEBHOOK_URL)
-    return HttpResponse("Webhook was set")
+@require_GET
+def set_webhook(request: HttpRequest) -> JsonResponse:
+    """Setting webhook."""
+    bot.set_webhook(url=f"{settings.HOOK}/bot/{settings.BOT_TOKEN}")
+    bot.send_message(settings.OWNER_ID, "webhook set")
+    return JsonResponse({"message": "OK"}, status=200)
 
 
 @require_GET
