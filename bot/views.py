@@ -26,7 +26,7 @@ from bot.handlers.admin.admin import (
     handle_admin_mark_payment
 )
 
-from .models import PaymentHistory
+from .models import PaymentHistory, User
 
 # Регистрируем обработчики команд
 bot.register_message_handler(admin_menu, commands=['admin'])
@@ -74,44 +74,58 @@ def payment_info(request):
         'school': 'Школа',
         'university': 'ВУЗ'
     }
+
     all_payments = PaymentHistory.objects.all().order_by('year', 'month')
-    years = set(PaymentHistory.objects.values_list('year', flat=True)) 
-    months = list(map(lambda x: str(x).rjust(2, '0'), set(PaymentHistory.objects.values_list('month', flat=True))))
-    
+    all_users = User.objects.all()
+
+    if request.method == 'POST':
+        course = request.POST.get('course', '*')
+        edu_type = request.POST.get('edu_type', '*')
+        if course != "*":
+            all_users = all_users.filter(course_or_class=course)
+        if edu_type != "*":
+            all_users = all_users.filter(education_type=edu_type)
+
+    years = set(PaymentHistory.objects.values_list('year', flat=True))     
     all_info = []
 
     for year in years:
         year_info = {
             'date': year,
             'months': [
-            {'title': 'Январь', 'id': 1, 'payers': [], 'payers_count': 0, 'is_paid': False}, 
-            {'title': 'Февраль', 'id': 2, 'payers': [], 'payers_count': 0, 'is_paid': False}, 
-            {'title': 'Март', 'id': 3, 'payers': [], 'payers_count': 0, 'is_paid': False}, 
-            {'title': 'Апрель', 'id': 4, 'payers': [], 'payers_count': 0, 'is_paid': False}, 
-            {'title': 'Май', 'id': 5, 'payers': [], 'payers_count': 0, 'is_paid': False},
-            {'title': 'Июнь', 'id': 6, 'payers': [], 'payers_count': 0, 'is_paid': False}, 
-            {'title': 'Июль', 'id': 7, 'payers': [], 'payers_count': 0, 'is_paid': False}, 
-            {'title': 'Август', 'id': 8, 'payers': [], 'payers_count': 0, 'is_paid': False}, 
-            {'title': 'Сентябрь', 'id': 9, 'payers': [], 'payers_count': 0, 'is_paid': False}, 
-            {'title': 'Октябрь', 'id': 10, 'payers': [], 'payers_count': 0, 'is_paid': False}, 
-            {'title': 'Ноябрь', 'id': 11, 'payers': [], 'payers_count': 0, 'is_paid': False}, 
-            {'title': 'Декабрь', 'id': 12, 'payers': [], 'payers_count': 0, 'is_paid': False}
+            {'title': 'Январь', 'id': 1, 'paid_users': [], 'unpaid_users': [], 'payers_count': 0, 'all_users': 0, 'is_paid': False}, 
+            {'title': 'Февраль', 'id': 2, 'paid_users': [], 'unpaid_users': [], 'payers_count': 0, 'all_users': 0, 'is_paid': False}, 
+            {'title': 'Март', 'id': 3, 'paid_users': [], 'unpaid_users': [], 'payers_count': 0, 'all_users': 0, 'is_paid': False}, 
+            {'title': 'Апрель', 'id': 4, 'paid_users': [], 'unpaid_users': [], 'payers_count': 0, 'all_users': 0, 'is_paid': False}, 
+            {'title': 'Май', 'id': 5, 'paid_users': [], 'unpaid_users': [], 'payers_count': 0, 'all_users': 0, 'is_paid': False},
+            {'title': 'Июнь', 'id': 6, 'paid_users': [], 'unpaid_users': [], 'payers_count': 0, 'all_users': 0, 'is_paid': False}, 
+            {'title': 'Июль', 'id': 7, 'paid_users': [], 'unpaid_users': [], 'payers_count': 0, 'all_users': 0, 'is_paid': False}, 
+            {'title': 'Август', 'id': 8, 'paid_users': [], 'unpaid_users': [], 'payers_count': 0, 'all_users': 0, 'is_paid': False}, 
+            {'title': 'Сентябрь', 'id': 9, 'paid_users': [], 'unpaid_users': [], 'payers_count': 0, 'all_users': 0, 'is_paid': False}, 
+            {'title': 'Октябрь', 'id': 10, 'paid_users': [], 'unpaid_users': [], 'payers_count': 0, 'all_users': 0, 'is_paid': False}, 
+            {'title': 'Ноябрь', 'id': 11, 'paid_users': [], 'unpaid_users': [], 'payers_count': 0, 'all_users': 0, 'is_paid': False}, 
+            {'title': 'Декабрь', 'id': 12, 'paid_users': [], 'unpaid_users': [], 'payers_count': 0, 'all_users': 0, 'is_paid': False}
         ]}
 
         for month in year_info['months']:
-            payers_info = all_payments.filter(month=month['id'], year=year)
-            if payers_info.count() > 0:
-                month['is_paid'] = True
-                month['payers_count'] = payers_info.count()
-                for payer in payers_info:
-                    payer.user.education_type = EDUCATION_CHOICES[payer.user.education_type]
-                    month['payers'].append(payer)
+            for user in all_users:
+                user.edu_type = EDUCATION_CHOICES[user.education_type]
+                if PaymentHistory.objects.filter(month=month["id"], year=year, user__telegram_id=user.telegram_id).count() > 0:
+                    month['payers_count'] += 1
+                    month['is_paid'] = True
+                    user.payment = PaymentHistory.objects.filter(month=month["id"], year=year, user=user).first()
+                    month['paid_users'].append(user)
+                else:
+                    month['unpaid_users'].append(user)
+
+                month['all_users'] += 1
+
         all_info.append(year_info)
         
     return render(request, 'templates_info.html', context={
         'all_info': all_info,
         'now_year': datetime.now().year,
-        'now_month': datetime.now().month,
+        'now_month': datetime.now().month
     })
 
 

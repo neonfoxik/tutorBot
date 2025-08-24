@@ -11,36 +11,88 @@
     <body>
         <section class="payment-statistics">
             <h1 class="payment-title">Статистика оплат</h1>
+            <div class="payment-filter">
+                <form method="post" action="/bot/payment-info/" name="payments-filter" class="payment-filter__form">
+                    {% csrf_token %}
+                    <div class="">
+                        <span class="payment__subtitle">Класс/курс</span>
+                        <select name="course" class="default-selector" id="course">
+                            <option value="*" selected>-</option>
+                            <option value="1">1</option>
+                            <option value="2">2</option>
+                            <option value="3">3</option>
+                            <option value="4">4</option>
+                            <option value="5">5</option>
+                            <option value="6">6</option>
+                            <option value="7">7</option>
+                            <option value="8">8</option>
+                            <option value="9">9</option>
+                            <option value="10">10</option>
+                            <option value="11">11</option>
+                            <option value="12">12</option>
+                        </select>
+                    </div>    
+                    
+                    <div class="">
+                        <span class="payment__subtitle">Тип обучения</span>
+                        <select name="edu_type" class="default-selector" id="edu_type">
+                            <option value="*" selected>-</option>
+                            <option value="school">Школа</option>
+                            <option value="university">ВУЗ</option>
+                        </select>
+                    </div>
+                    <!-- <button type="reset" class="default-button">Сбросить</button> -->
+                    <button type="submit" class="default-button">Поиск</button>
+                </form>
+            </div>
+
             {% for year in all_info %}
                 <div class="year {% if now_year == year.date %}year_now{% endif %}">
                     <h2 class="year__title">{{ year.date }} год</h2>
                     <div class="year__months">
                         {% for month in year.months %}
-                            <div class="month {% if now_month == month.id %}month_now{% endif %} {% if month.is_paid %}month_paid{% else %}month_not-paid{% endif %}">
+                        <div class="month {% if now_month == month.id %}month_now{% endif %} {% if month.is_paid %}month_paid{% else %}month_not-paid{% endif %}">
                                 <div class="month__top-part">
                                     <h3 class="month__title">{{ month.title }}</h3>
-                                    <div class="month__payers-count">Оплат: {{ month.payers_count }}</div>
+                                    <div class="month__payers-count">Оплат: {{ month.payers_count }} из {{ month.all_users }}</div>
                                 </div>
                                 {% if month.is_paid %}
                                 <div class="month__payers">
-                                    {% for payer in month.payers %}
-                                        <div class="payment">
-                                            <h4 class="payment__title">Платёж</h4>
+                                    {% for user in month.paid_users %}
+                                        <div class="payment payment_accept">
+                                            <h4 class="payment__title">Оплатил</h4>
                                             <div class="payment__user">
                                                 <div class="payment__info">
                                                     <div class="payment__subtitle">Пользователь:</div>
-                                                    {{ payer.user.full_name }}
+                                                    {{ user.full_name }}
                                                 </div>
                                                 <div class="payment__info">
                                                     <div class="payment__subtitle">Тип обучения:</div> 
-                                                    {{ payer.user.education_type }} {{ payer.user.course_or_class }} 
+                                                    {{ user.edu_type }} {{ user.course_or_class }} 
                                                     <div class="payment__subtitle">курс/класс</div>
                                                 </div>
                                             </div>
                                             <div class="payment__payment">
                                                 <div class="payment__info">
                                                     <div class="payment__subtitle">Сумма:</div>
-                                                    {{ payer.amount_paid }} ₽
+                                                    {{ user.payment.amount_paid }} ₽
+                                                </div>
+                                            </div>
+                                        </div>
+                                    {% endfor %}
+
+                                    {% for user in month.unpaid_users %}
+                                        <div class="payment payment_decline">
+                                            <h4 class="payment__title">Не оплатил</h4>
+                                            <div class="payment__user">
+                                                <div class="payment__info">
+                                                    <div class="payment__subtitle">Пользователь:</div>
+                                                    {{ user.full_name }}
+                                                </div>
+                                                <div class="payment__info">
+                                                    <div class="payment__subtitle">Тип обучения:</div> 
+                                                    {{ user.edu_type }} {{ user.course_or_class }} 
+                                                    <div class="payment__subtitle">курс/класс</div>
                                                 </div>
                                             </div>
                                         </div>

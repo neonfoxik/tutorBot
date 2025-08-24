@@ -24,6 +24,34 @@ table{border-collapse:collapse;border-spacing:0}
 }
 
 
+
+.payment-filter__form {
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    align-items: center;
+    row-gap: 15px;
+}
+
+.default-selector {
+    margin: 0 0 0 10px;
+    font-size: 16px;
+    padding: 3px;
+    border-width: 2px;
+}
+
+.default-button {
+    width: 40%;
+    padding: 5px;
+    font-size: 16px;
+    border-radius: 5px;
+    background-color: transparent;
+    border-width: 2px;
+    border-style: solid;
+    font-family: 'Montserrat-SemiBold';
+}
+
+
 .payment-statistics {
     padding: 2vh 5vw;
     display: flex;
@@ -137,6 +165,21 @@ table{border-collapse:collapse;border-spacing:0}
     font-size: 16px;
 }
 
+.payment_accept {
+    border: 3px rgb(118, 175, 87) solid;
+}
+
+.payment_accept .payment__title {
+    color: rgb(118, 175, 87);
+}
+
+.payment_decline {
+    border: 3px rgb(175, 87, 87) solid;
+}
+
+.payment_decline .payment__title {
+    color: rgb(175, 87, 87);
+}
 
 @media (min-width: 990px) {
     .month__payers {
@@ -149,6 +192,15 @@ table{border-collapse:collapse;border-spacing:0}
     .payment {
         min-width: 23vw;
         padding: 2vh 2vw;
+    }
+
+    .payment-filter__form {
+        justify-content: left;
+        gap: 20px;
+    }
+
+    .default-button {
+        width: 20%;
     }
     
 }
