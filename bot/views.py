@@ -109,7 +109,7 @@ def payment_info(request):
 
         for month in year_info['months']:
             for user in all_users:
-                user.edu_type = EDUCATION_CHOICES[user.education_type]
+                user.edu_type = EDUCATION_CHOICES.get(user.education_type, 'Нет')
                 if PaymentHistory.objects.filter(month=month["id"], year=year, user__telegram_id=user.telegram_id).count() > 0:
                     month['payers_count'] += 1
                     month['is_paid'] = True
