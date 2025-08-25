@@ -37,7 +37,7 @@ class User(models.Model):
         verbose_name="Завершена регистрация"
     )
     register_date = models.DateField(
-        default=datetime.now(),
+        default='2025-08-25',
         verbose_name='Дата регистрации'
     )
     is_admin = models.BooleanField(
