@@ -70,62 +70,57 @@ bot.register_callback_query_handler(
 
 
 def payment_info(request):
-    EDUCATION_CHOICES = {
-        'school': 'Школа',
-        'university': 'ВУЗ'
-    }
-
-    all_payments = PaymentHistory.objects.all().order_by('year', 'month')
     all_users = User.objects.all()
 
     if request.method == 'POST':
         course = request.POST.get('course', '*')
-        edu_type = request.POST.get('edu_type', '*')
         if course != "*":
             all_users = all_users.filter(course_or_class=course)
-        if edu_type != "*":
-            all_users = all_users.filter(education_type=edu_type)
 
-    years = set(PaymentHistory.objects.values_list('year', flat=True))     
+    years = set(PaymentHistory.objects.values_list('year', flat=True))
+    if len(years) == 0:
+        years = [datetime.now().year]
     all_info = []
-
+    total_income = 0
     for year in years:
         year_info = {
             'date': year,
             'months': [
-            {'title': 'Январь', 'id': 1, 'paid_users': [], 'unpaid_users': [], 'payers_count': 0, 'all_users': 0, 'is_paid': False}, 
-            {'title': 'Февраль', 'id': 2, 'paid_users': [], 'unpaid_users': [], 'payers_count': 0, 'all_users': 0, 'is_paid': False}, 
-            {'title': 'Март', 'id': 3, 'paid_users': [], 'unpaid_users': [], 'payers_count': 0, 'all_users': 0, 'is_paid': False}, 
-            {'title': 'Апрель', 'id': 4, 'paid_users': [], 'unpaid_users': [], 'payers_count': 0, 'all_users': 0, 'is_paid': False}, 
-            {'title': 'Май', 'id': 5, 'paid_users': [], 'unpaid_users': [], 'payers_count': 0, 'all_users': 0, 'is_paid': False},
-            {'title': 'Июнь', 'id': 6, 'paid_users': [], 'unpaid_users': [], 'payers_count': 0, 'all_users': 0, 'is_paid': False}, 
-            {'title': 'Июль', 'id': 7, 'paid_users': [], 'unpaid_users': [], 'payers_count': 0, 'all_users': 0, 'is_paid': False}, 
-            {'title': 'Август', 'id': 8, 'paid_users': [], 'unpaid_users': [], 'payers_count': 0, 'all_users': 0, 'is_paid': False}, 
-            {'title': 'Сентябрь', 'id': 9, 'paid_users': [], 'unpaid_users': [], 'payers_count': 0, 'all_users': 0, 'is_paid': False}, 
-            {'title': 'Октябрь', 'id': 10, 'paid_users': [], 'unpaid_users': [], 'payers_count': 0, 'all_users': 0, 'is_paid': False}, 
+            {'title': 'Декабрь', 'id': 12, 'paid_users': [], 'unpaid_users': [], 'payers_count': 0, 'all_users': 0, 'is_paid': False},
             {'title': 'Ноябрь', 'id': 11, 'paid_users': [], 'unpaid_users': [], 'payers_count': 0, 'all_users': 0, 'is_paid': False}, 
-            {'title': 'Декабрь', 'id': 12, 'paid_users': [], 'unpaid_users': [], 'payers_count': 0, 'all_users': 0, 'is_paid': False}
+            {'title': 'Октябрь', 'id': 10, 'paid_users': [], 'unpaid_users': [], 'payers_count': 0, 'all_users': 0, 'is_paid': False}, 
+            {'title': 'Сентябрь', 'id': 9, 'paid_users': [], 'unpaid_users': [], 'payers_count': 0, 'all_users': 0, 'is_paid': False}, 
+            {'title': 'Август', 'id': 8, 'paid_users': [], 'unpaid_users': [], 'payers_count': 0, 'all_users': 0, 'is_paid': False}, 
+            {'title': 'Июль', 'id': 7, 'paid_users': [], 'unpaid_users': [], 'payers_count': 0, 'all_users': 0, 'is_paid': False}, 
+            {'title': 'Июнь', 'id': 6, 'paid_users': [], 'unpaid_users': [], 'payers_count': 0, 'all_users': 0, 'is_paid': False}, 
+            {'title': 'Май', 'id': 5, 'paid_users': [], 'unpaid_users': [], 'payers_count': 0, 'all_users': 0, 'is_paid': False},
+            {'title': 'Апрель', 'id': 4, 'paid_users': [], 'unpaid_users': [], 'payers_count': 0, 'all_users': 0, 'is_paid': False}, 
+            {'title': 'Март', 'id': 3, 'paid_users': [], 'unpaid_users': [], 'payers_count': 0, 'all_users': 0, 'is_paid': False}, 
+            {'title': 'Февраль', 'id': 2, 'paid_users': [], 'unpaid_users': [], 'payers_count': 0, 'all_users': 0, 'is_paid': False}, 
+            {'title': 'Январь', 'id': 1, 'paid_users': [], 'unpaid_users': [], 'payers_count': 0, 'all_users': 0, 'is_paid': False}, 
         ]}
 
         for month in year_info['months']:
             for user in all_users:
-                user.edu_type = EDUCATION_CHOICES.get(user.education_type, 'Нет')
-                if PaymentHistory.objects.filter(month=month["id"], year=year, user__telegram_id=user.telegram_id).count() > 0:
-                    month['payers_count'] += 1
-                    month['is_paid'] = True
-                    user.payment = PaymentHistory.objects.filter(month=month["id"], year=year, user=user).first()
-                    month['paid_users'].append(user)
-                else:
-                    month['unpaid_users'].append(user)
+                if user.register_date.month <= month['id']:
+                    if PaymentHistory.objects.filter(month=month["id"], year=year, user__telegram_id=user.telegram_id).count() > 0:
+                        month['payers_count'] += 1
+                        month['is_paid'] = True
+                        user.payment = PaymentHistory.objects.filter(month=month["id"], year=year, user=user).first()
+                        month['paid_users'].append(user)
+                        total_income += PaymentHistory.objects.filter(month=month["id"], year=year, user=user).first().amount_paid
+                    else:
+                        month['unpaid_users'].append(user)
 
                 month['all_users'] += 1
-
+            month['all_students'] = month['paid_users'] + month['unpaid_users']
         all_info.append(year_info)
-        
     return render(request, 'templates_info.html', context={
         'all_info': all_info,
         'now_year': datetime.now().year,
-        'now_month': datetime.now().month
+        'now_month': datetime.now().month,
+        'total_students': all_users.count(),
+        'total_income': total_income
     })
 
 
