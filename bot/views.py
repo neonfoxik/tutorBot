@@ -106,9 +106,9 @@ def payment_info(request):
                     if PaymentHistory.objects.filter(month=month["id"], year=year, user__telegram_id=user.telegram_id).count() > 0:
                         month['payers_count'] += 1
                         month['is_paid'] = True
-                        user.payment = PaymentHistory.objects.filter(month=month["id"], year=year, user=user).first()
-                        month['paid_users'].append(user)
-                        total_income += PaymentHistory.objects.filter(month=month["id"], year=year, user=user).first().amount_paid
+                        user.payment = PaymentHistory.objects.get(month=month["id"], year=year, user=user)
+                        month['paid_users'].append(PaymentHistory.objects.get(month=month["id"], year=year, user=user))
+                        total_income += PaymentHistory.objects.get(month=month["id"], year=year, user=user).amount_paid
                     else:
                         month['unpaid_users'].append(user)
 

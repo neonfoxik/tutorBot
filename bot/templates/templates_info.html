@@ -89,16 +89,32 @@
                     </div>
                     
                     <div id="month-{{ forloop.counter }}" class="month-content">
-                        {% for student in month.all_students %}
+                        {% for student in month.paid_users %}
                         <div class="student-card">
-                            <div class="student-header status-{% if student in month.paid_users %}paid{% else %}unpaid{% endif %}">
+                            <div class="student-header status-paid">
+                                <div class="student-name">{{ student.user.full_name }}</div>
+                                <div class="payment-status">
+                                    Оплачено
+                                </div>
+                            </div>
+                            <div class="student-details">
+                                <div class="detail-row">
+                                    <span class="detail-label">Класс:</span>
+                                    <span class="detail-value">{{ student.user.course_or_class }}</span>
+                                </div>
+                                <div class="detail-row">
+                                    <span class="detail-label">Стоимость:</span>
+                                    <span class="detail-value">{{ student.amount_paid }} руб.</span>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                        {% for student in month.unpaid_users %}
+                        <div class="student-card">
+                            <div class="student-header status-unpaid">
                                 <div class="student-name">{{ student.full_name }}</div>
                                 <div class="payment-status">
-                                    {% if student in month.paid_users %}
-                                    Оплачено
-                                    {% else %}
                                     Не оплачено
-                                    {% endif %}
                                 </div>
                             </div>
                             <div class="student-details">
@@ -106,18 +122,7 @@
                                     <span class="detail-label">Класс:</span>
                                     <span class="detail-value">{{ student.course_or_class }}</span>
                                 </div>
-                                {% if student in month.paid_users %}
-                                <div class="detail-row">
-                                    <span class="detail-label">Стоимость:</span>
-                                    <span class="detail-value">{{ student.payment.amount_paid }} руб.</span>
-                                </div>
-                                {% endif %}
                             </div>
-                        </div>
-                        {% empty %}
-                        <div class="empty-state">
-                            <i class="fas fa-calendar-times"></i>
-                            <h3>Нет учеников на этот месяц</h3>
                         </div>
                         {% endfor %}
                     </div>
