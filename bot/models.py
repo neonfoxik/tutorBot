@@ -133,6 +133,18 @@ class Payment(models.Model):
 class PaymentHistory(models.Model):
     """Модель для отслеживания истории оплаченных месяцев"""
     
+    STATUS_CHOICES = [
+        ('pending', 'Ожидает оплаты'),
+        ('completed', 'Завершено'),
+        ('cancelled', 'Отменено'),
+    ]
+    
+    PAYMENT_TYPE_CHOICES = [
+        ('card', 'Банковская карта'),
+        ('cash', 'Наличные'),
+        ('transfer', 'Перевод'),
+    ]
+    
     user = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
@@ -143,7 +155,9 @@ class PaymentHistory(models.Model):
         Payment,
         on_delete=models.CASCADE,
         related_name='history_records',
-        verbose_name='Платеж'
+        verbose_name='Платеж',
+        null=True,
+        blank=True
     )
     month = models.IntegerField(
         verbose_name='Месяц'
@@ -159,6 +173,22 @@ class PaymentHistory(models.Model):
     pricing_plan = models.CharField(
         max_length=50,
         verbose_name='Тарифный план'
+    )
+    payment_type = models.CharField(
+        max_length=20,
+        choices=PAYMENT_TYPE_CHOICES,
+        default='card',
+        verbose_name='Тип оплаты'
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='completed',
+        verbose_name='Статус оплаты'
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name='Дата создания'
     )
     paid_at = models.DateTimeField(
         auto_now_add=True,
