@@ -82,7 +82,7 @@ def generate_students_pagination_keyboard(page=1, students_per_page=8):
     
     # Добавляем кнопки с учениками
     for student in current_students:
-        button_text = f"{student.first_name} {student.last_name or ''}"
+        button_text = student.full_name or f"ID: {student.telegram_id}"
         callback_data = f"select_student_{student.telegram_id}"
         markup.add(InlineKeyboardButton(button_text, callback_data=callback_data))
     
@@ -105,6 +105,14 @@ def generate_admin_payment_months_keyboard(student_id):
     Генерирует клавиатуру с месяцами для админской отметки оплаты
     """
     markup = InlineKeyboardMarkup()
+    
+    # Проверяем, что student_id не пустой и не является служебным словом
+    if not student_id or str(student_id).strip() in ['student', 'admin', 'user']:
+        return markup
+    
+    # Очищаем student_id от пробелов
+    student_id = str(student_id).strip()
+    
     current_date = datetime.now()
     current_month = current_date.month
     current_year = current_date.year
@@ -221,6 +229,13 @@ def generate_student_info_keyboard(student_id):
     """
     markup = InlineKeyboardMarkup()
     
+    # Проверяем, что student_id не пустой и не является служебным словом
+    if not student_id or str(student_id).strip() in ['student', 'admin', 'user']:
+        return markup
+    
+    # Очищаем student_id от пробелов
+    student_id = str(student_id).strip()
+    
     # Кнопка для отметки оплаты
     mark_payment_btn = InlineKeyboardButton("💵 Отметить оплату", callback_data=f"mark_payment_for_student_{student_id}")
     
@@ -240,8 +255,15 @@ def generate_payment_history_keyboard(student_id):
     """
     markup = InlineKeyboardMarkup()
     
+    # Проверяем, что student_id не пустой и не является служебным словом
+    if not student_id or str(student_id).strip() in ['student', 'admin', 'user']:
+        return markup
+    
+    # Очищаем student_id от пробелов
+    student_id = str(student_id).strip()
+    
     # Кнопка назад к информации об ученике
-    back_btn = InlineKeyboardButton("⬅️ Назад к ученику", callback_data=f"view_student_{student_id}")
+    back_btn = InlineKeyboardButton("⬅️ Назад к ученику", callback_data=f"select_student_{student_id}")
     
     markup.add(back_btn)
     
