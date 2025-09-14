@@ -134,5 +134,4 @@ def get_all_price_options():
         for key, data in PRICING_CONFIG.items()
     ]
 
-# Тестовая цена (1 рубль) для разработки
-TEST_PRICE = 1 
+# Конфигурация цен для разных классов обучения 
