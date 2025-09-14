@@ -1,17 +1,19 @@
 from functools import wraps
 from datetime import datetime
+from decimal import Decimal
 
 from django.conf import settings
 from telebot.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 from bot.keyboards import (
     ADMIN_MARKUP,
     generate_students_pagination_keyboard,
+    generate_admin_payment_method_keyboard,
     generate_admin_payment_months_keyboard,
     generate_student_info_keyboard,
     generate_payment_history_keyboard
 )
 from bot import bot, logger
-from bot.models import User, Payment, PaymentHistory
+from bot.models import User, Payment, PaymentHistory, AdminState
 from bot.pricing import get_price_by_class
 
 
@@ -133,7 +135,8 @@ def handle_select_student(call: CallbackQuery):
         message_text = f"👤 Информация об ученике:\n\n"
         message_text += f"ФИО: {student.full_name or 'Не указано'}\n"
         message_text += f"Telegram ID: {student.telegram_id}\n"
-        message_text += f"Дата регистрации: {student.register_date.strftime('%d.%m.%Y')}\n\n"
+        message_text += f"Дата регистрации: {student.register_date.strftime('%d.%m.%Y')}\n"
+        message_text += f"💳 Баланс: {student.balance} ₽\n\n"
         
         message_text += f"💰 Статус оплаты:\n"
         message_text += f"Текущий месяц ({current_month}/{current_year}): "
@@ -236,8 +239,9 @@ def handle_mark_payment_for_student(call: CallbackQuery):
         bot.edit_message_text(
             chat_id=call.message.chat.id,
             message_id=call.message.message_id,
-            text=f"Выберите месяц оплаты для ученика {student.full_name or 'Не указано'}:",
-            reply_markup=generate_admin_payment_months_keyboard(student_id)
+            text=f"Выберите способ оплаты для ученика {student.full_name or 'Не указано'}:\n\n"
+                 f"💳 Текущий баланс: {student.balance} ₽",
+            reply_markup=generate_admin_payment_method_keyboard(student_id)
         )
     except User.DoesNotExist:
         bot.answer_callback_query(call.id, "❌ Ученик не найден")
@@ -245,6 +249,143 @@ def handle_mark_payment_for_student(call: CallbackQuery):
     except Exception as e:
         bot.answer_callback_query(call.id, "❌ Произошла ошибка")
         logger.error(f"Ошибка в handle_mark_payment_for_student: {e}")
+
+
+@admin_permission_callback
+def handle_admin_payment_method_selection(call: CallbackQuery):
+    """Обработчик выбора способа оплаты админом"""
+    try:
+        # Получаем ID ученика из callback_data
+        logger.info(f"Callback data: {call.data}")
+        parts = call.data.split('_')
+        logger.info(f"Split parts: {parts}")
+        
+        # ID находится на последней позиции
+        student_id = parts[-1].strip()
+        logger.info(f"Student ID: '{student_id}'")
+        
+        # Проверяем, что ID не пустой и не является служебным словом
+        if not student_id or student_id in ['student', 'admin', 'user']:
+            bot.answer_callback_query(call.id, "❌ Неверный ID ученика")
+            logger.error(f"Неверный ID ученика: '{student_id}'")
+            return
+        
+        student = User.objects.get(telegram_id=student_id)
+        
+        if call.data.startswith("admin_month_payment_"):
+            # Оплата за конкретный месяц
+            bot.edit_message_text(
+                chat_id=call.message.chat.id,
+                message_id=call.message.message_id,
+                text=f"Выберите месяц оплаты для ученика {student.full_name or 'Не указано'}:\n\n"
+                     f"💳 Текущий баланс: {student.balance} ₽",
+                reply_markup=generate_admin_payment_months_keyboard(student_id)
+            )
+        elif call.data.startswith("admin_balance_payment_"):
+            # Зачисление на баланс - запрашиваем сумму
+            bot.edit_message_text(
+                chat_id=call.message.chat.id,
+                message_id=call.message.message_id,
+                text=f"💰 Зачисление на баланс\n\n"
+                     f"Ученик: {student.full_name or 'Не указано'}\n"
+                     f"💳 Текущий баланс: {student.balance} ₽\n\n"
+                     f"Введите сумму для зачисления на баланс:",
+                reply_markup=InlineKeyboardMarkup().add(
+                    InlineKeyboardButton("⬅️ Назад", callback_data=f"mark_payment_for_student_{student_id}")
+                )
+            )
+            
+            # Сохраняем состояние для ожидания ввода суммы
+            AdminState.objects.update_or_create(
+                admin_id=str(call.from_user.id),
+                state='waiting_balance_amount',
+                defaults={
+                    'data': {'student_id': student_id}
+                }
+            )
+            
+    except User.DoesNotExist:
+        bot.answer_callback_query(call.id, "❌ Ученик не найден")
+        logger.error(f"Ученик с ID '{student_id}' не найден при выборе способа оплаты")
+    except Exception as e:
+        bot.answer_callback_query(call.id, "❌ Произошла ошибка")
+        logger.error(f"Ошибка в handle_admin_payment_method_selection: {e}")
+
+
+@admin_permission
+def handle_admin_text_input(msg: Message):
+    """Обработчик текстовых сообщений от админов"""
+    try:
+        admin_id = str(msg.from_user.id)
+        
+        # Проверяем, есть ли активное состояние ожидания ввода суммы
+        admin_state = AdminState.objects.filter(
+            admin_id=admin_id,
+            state='waiting_balance_amount'
+        ).first()
+        
+        if admin_state:
+            # Обрабатываем ввод суммы
+            try:
+                amount = Decimal(str(msg.text.replace(',', '.')))
+                
+                if amount <= 0:
+                    bot.send_message(
+                        msg.chat.id,
+                        "❌ Сумма должна быть больше 0. Попробуйте еще раз:"
+                    )
+                    return
+                
+                student_id = admin_state.data.get('student_id')
+                student = User.objects.get(telegram_id=student_id)
+                
+                # Зачисляем деньги на баланс
+                student.balance += amount
+                student.save()
+                
+                # Удаляем состояние
+                admin_state.delete()
+                
+                # Отправляем подтверждение
+                bot.send_message(
+                    msg.chat.id,
+                    f"✅ Сумма успешно зачислена на баланс!\n\n"
+                    f"Ученик: {student.full_name or 'Не указано'}\n"
+                    f"💰 Зачислено: {amount} ₽\n"
+                    f"💳 Новый баланс: {student.balance} ₽",
+                    reply_markup=ADMIN_MARKUP
+                )
+                
+                # Уведомляем ученика
+                bot.send_message(
+                    student.telegram_id,
+                    f"💰 На ваш баланс зачислено {amount} ₽\n"
+                    f"💳 Ваш баланс: {student.balance} ₽"
+                )
+                
+            except ValueError:
+                bot.send_message(
+                    msg.chat.id,
+                    "❌ Неверный формат суммы. Введите число (например: 1000 или 1000.50):"
+                )
+            except User.DoesNotExist:
+                bot.send_message(
+                    msg.chat.id,
+                    "❌ Ученик не найден. Операция отменена.",
+                    reply_markup=ADMIN_MARKUP
+                )
+                admin_state.delete()
+        else:
+            # Нет активного состояния - игнорируем сообщение
+            pass
+            
+    except Exception as e:
+        logger.error(f"Ошибка в handle_admin_text_input: {e}")
+        bot.send_message(
+            msg.chat.id,
+            "❌ Произошла ошибка. Попробуйте еще раз.",
+            reply_markup=ADMIN_MARKUP
+        )
 
 
 @admin_permission_callback
@@ -297,6 +438,10 @@ def handle_admin_mark_payment(call: CallbackQuery):
             lesson_price = 5000
             class_name = "стандартный тариф"
         
+        # Зачисляем деньги на баланс пользователя
+        student.balance += lesson_price
+        student.save()
+        
         # Создаем запись об оплате
         payment = PaymentHistory.objects.create(
             user=student,
@@ -316,7 +461,9 @@ def handle_admin_mark_payment(call: CallbackQuery):
                  f"Ученик: {student.full_name or 'Не указано'}\n"
                  f"Класс: {class_name}\n"
                  f"Месяц: {month}/{year}\n"
-                 f"Сумма: {lesson_price} ₽",
+                 f"Сумма: {lesson_price} ₽\n"
+                 f"💰 Зачислено на баланс: {lesson_price} ₽\n"
+                 f"💳 Текущий баланс: {student.balance} ₽",
             reply_markup=ADMIN_MARKUP
         )
         
@@ -325,7 +472,9 @@ def handle_admin_mark_payment(call: CallbackQuery):
             student.telegram_id,
             f"✅ Администратор отметил вашу оплату за {month}/{year}\n"
             f"Тариф: {class_name}\n"
-            f"Сумма: {lesson_price} ₽"
+            f"Сумма: {lesson_price} ₽\n"
+            f"💰 Зачислено на баланс: {lesson_price} ₽\n"
+            f"💳 Ваш баланс: {student.balance} ₽"
         )
     except User.DoesNotExist:
         bot.answer_callback_query(call.id, "❌ Ученик не найден")
