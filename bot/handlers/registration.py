@@ -21,6 +21,8 @@ registration_states = {}
 
 def start_registration(message: Message) -> None:
     """Начинает процесс регистрации пользователя"""
+    from bot import logger
+    logger.info(f"Starting registration for user {message.from_user.id}")
     telegram_id = str(message.from_user.id)
     
     # Проверяем, зарегистрирован ли уже пользователь
