@@ -18,11 +18,15 @@ from .registration import start_registration
 
 
 def start(message: Message) -> None:
+    from bot import logger
+    logger.info(f"Start command received from user {message.from_user.id}")
     start_registration(message)
 
 
 def show_main_menu(message: Message) -> None:
     """Показывает главное меню пользователю"""
+    from bot import logger
+    logger.info(f"Showing main menu to user {message.from_user.id}")
     bot.send_message(message.chat.id, MAIN_TEXT, reply_markup=main_markup)
 
 
