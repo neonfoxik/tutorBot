@@ -22,6 +22,8 @@ from bot.handlers.admin.admin import (
     handle_select_student,
     handle_view_payment_history,
     handle_mark_payment_for_student,
+    handle_admin_payment_method_selection,
+    handle_admin_text_input,
     handle_mark_student_payment,
     handle_admin_mark_payment
 )
@@ -29,6 +31,14 @@ from bot.handlers.admin.admin import (
 from .models import PaymentHistory, User
 
 # Регистрируем обработчики команд
+# Обработчик команды /start (должен быть первым!)
+@bot.message_handler(commands=['start'])
+def handle_start_command(message):
+    """Обработчик команды /start"""
+    logger.info(f"Start command received from user {message.from_user.id}")
+    from bot.handlers.common import start
+    start(message)
+
 bot.register_message_handler(admin_menu, commands=['admin'])
 
 # Регистрируем callback обработчики для просмотра учеников
@@ -66,6 +76,18 @@ bot.register_callback_query_handler(
 bot.register_callback_query_handler(
     handle_admin_mark_payment,
     func=lambda call: call.data.startswith("admin_mark_payment_")
+)
+
+# Регистрируем обработчики для выбора способа оплаты админом
+bot.register_callback_query_handler(
+    handle_admin_payment_method_selection,
+    func=lambda call: call.data.startswith("admin_month_payment_") or call.data.startswith("admin_balance_payment_")
+)
+
+# Регистрируем обработчик текстовых сообщений от админов (кроме команд)
+bot.register_message_handler(
+    handle_admin_text_input,
+    func=lambda msg: not msg.text.startswith('/') and User.objects.filter(telegram_id=str(msg.from_user.id), is_admin=True).exists()
 )
 
 
@@ -128,8 +150,18 @@ def payment_info(request):
 def index(request):
     if request.method == "POST":
         json_str = request.body.decode('UTF-8')
+        logger.info(f"Received webhook data: {json_str}")
+        
         update = telebot.types.Update.de_json(json_str)
-        bot.process_new_updates([update])
+        logger.info(f"Parsed update: {update}")
+        
+        try:
+            bot.process_new_updates([update])
+            logger.info("Successfully processed update")
+        except Exception as e:
+            logger.error(f"Error processing update: {e}")
+            logger.error(f"Traceback: {format_exc()}")
+        
         return HttpResponse("")
     return HttpResponse("Bot is running")
 
@@ -138,6 +170,10 @@ def index(request):
 def set_webhook(request: HttpRequest) -> JsonResponse:
     """Setting webhook."""
     try:
+        # Удаляем старый webhook перед установкой нового
+        bot.remove_webhook()
+        
+        # Устанавливаем новый webhook
         bot.set_webhook(url=f"{settings.HOOK}/bot/{settings.BOT_TOKEN}")
         bot.send_message(settings.OWNER_ID, "webhook set")
         return JsonResponse({"message": "Webhook set successfully"}, status=200)
@@ -177,14 +213,15 @@ def start_polling(request: HttpRequest) -> JsonResponse:
 
 """Common"""
 
-start = bot.message_handler(commands=["start"])(start)
-menu_call = bot.callback_query_handler(lambda c: c.data == "main_menu")(menu_call)
-profile = bot.callback_query_handler(lambda c: c.data == "profile")(profile)
+# Обработчик команды /start удален - используется тестовый обработчик выше
+
+bot.register_callback_query_handler(menu_call, func=lambda c: c.data == "main_menu")
+bot.register_callback_query_handler(profile, func=lambda c: c.data == "profile")
 
 # Обработчики для регистрации
-@bot.message_handler(func=lambda message: True)
+@bot.message_handler(func=lambda message: not message.text.startswith('/'))
 def handle_all_messages(message):
-    """Обрабатывает все текстовые сообщения для регистрации"""
+    """Обрабатывает все текстовые сообщения для регистрации (кроме команд)"""
     from bot.handlers.registration import handle_registration_message
     handle_registration_message(message)
 
@@ -234,3 +271,15 @@ def handle_payment_check(call):
     """Обрабатывает проверку оплаты"""
     from bot.handlers.payments import check_payment
     check_payment(call)
+
+@bot.callback_query_handler(func=lambda call: call.data in ["pay_with_yookassa", "pay_with_balance"])
+def handle_payment_method_selection(call):
+    """Обрабатывает выбор способа оплаты"""
+    from bot.handlers.payments import select_payment_method
+    select_payment_method(call)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("pay_balance_month_"))
+def handle_balance_payment_month_selection(call):
+    """Обрабатывает выбор месяца для оплаты с баланса"""
+    from bot.handlers.payments import select_balance_payment_month
+    select_balance_payment_month(call)
