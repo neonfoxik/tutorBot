@@ -13,7 +13,7 @@ from bot.keyboards import (
     UNIVERSAL_BUTTONS,
     MONTH_NAMES
 )
-from bot.pricing import get_price_by_class, TEST_PRICE
+from bot.pricing import get_price_by_class
 from bot.yookassa_client import YooKassaClient
 from django.utils import timezone
 
@@ -59,7 +59,7 @@ def start_payment(call: CallbackQuery) -> None:
         text = f"💳 Оплата занятий\n\n"
         text += f"📚 Ваш класс: {user.course_or_class}\n"
         text += f"💯 Тариф: {price_info['name']}\n"
-        text += f"💰 Стоимость: {TEST_PRICE} руб. (тестовый режим)\n"
+        text += f"💰 Стоимость: {price_info['price']} руб.\n"
         text += f"💳 Ваш баланс: {user.balance} ₽\n"
         text += f"📝 {price_info['description']}\n\n"
         text += "Выберите способ оплаты:"
@@ -80,12 +80,19 @@ def select_payment_method(call: CallbackQuery) -> None:
     try:
         user = User.objects.get(telegram_id=str(call.from_user.id))
         
+        # Получаем цену для класса пользователя
+        price_info = get_price_by_class(user.course_or_class)
+        
+        if not price_info:
+            bot.answer_callback_query(call.id, "Ошибка определения цены")
+            return
+        
         if call.data == "pay_with_yookassa":
             # Оплата через ЮKassa - показываем месяцы
             markup = generate_payment_months_keyboard()
             text = f"💳 Оплата через ЮKassa\n\n"
             text += f"📚 Ваш класс: {user.course_or_class}\n"
-            text += f"💰 Стоимость: {TEST_PRICE} руб. (тестовый режим)\n\n"
+            text += f"💰 Стоимость: {price_info['price']} руб.\n\n"
             text += "Выберите месяц для оплаты:"
             
         elif call.data == "pay_with_balance":
@@ -93,7 +100,7 @@ def select_payment_method(call: CallbackQuery) -> None:
             markup = generate_balance_payment_months_keyboard()
             text = f"💰 Оплата с баланса\n\n"
             text += f"📚 Ваш класс: {user.course_or_class}\n"
-            text += f"💰 Стоимость: {TEST_PRICE} руб.\n"
+            text += f"💰 Стоимость: {price_info['price']} руб.\n"
             text += f"💳 Ваш баланс: {user.balance} ₽\n\n"
             text += "Выберите месяц для оплаты:"
             
@@ -140,7 +147,7 @@ def select_payment_month(call: CallbackQuery) -> None:
         # Создаем платеж через ЮKassa
         yookassa_client = YooKassaClient()
         
-        amount = Decimal(str(TEST_PRICE))  # Используем тестовую цену
+        amount = Decimal(str(price_info['price']))  # Используем тестовую цену
         description = f"Оплата занятий за {MONTH_NAMES[month]} {year} - {price_info['name']}"
         
         metadata = {
@@ -243,7 +250,7 @@ def select_balance_payment_month(call: CallbackQuery) -> None:
             bot.answer_callback_query(call.id, "Ошибка определения цены")
             return
         
-        amount = Decimal(str(TEST_PRICE))
+        amount = Decimal(str(price_info['price']))
         
         # Проверяем, достаточно ли средств на балансе
         if user.balance < amount:
@@ -322,7 +329,7 @@ def confirm_payment(call: CallbackQuery) -> None:
         # Создаем платеж через ЮKassa
         yookassa_client = YooKassaClient()
         
-        amount = Decimal(str(TEST_PRICE))  # Используем тестовую цену
+        amount = Decimal(str(price_info['price']))  # Используем тестовую цену
         description = f"Оплата занятий за {MONTH_NAMES[month]} {year} - {price_info['name']}"
         
         metadata = {
