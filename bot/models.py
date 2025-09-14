@@ -44,6 +44,12 @@ class User(models.Model):
         default=False,
         verbose_name="Администратор"
     )
+    balance = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=0,
+        verbose_name="Баланс"
+    )
     
     class Meta:
         verbose_name = "Пользователь"
@@ -217,4 +223,33 @@ class PaymentHistory(models.Model):
     def get_paid_months(cls, user):
         """Получить все оплаченные месяцы для пользователя"""
         return cls.objects.filter(user=user).values_list('month', 'year')
+
+
+class AdminState(models.Model):
+    """Модель для хранения состояний администраторов"""
+    
+    admin_id = models.CharField(
+        max_length=50,
+        verbose_name="ID администратора"
+    )
+    state = models.CharField(
+        max_length=100,
+        verbose_name="Состояние"
+    )
+    data = models.JSONField(
+        default=dict,
+        verbose_name="Данные состояния"
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="Дата создания"
+    )
+    
+    class Meta:
+        verbose_name = "Состояние администратора"
+        verbose_name_plural = "Состояния администраторов"
+        unique_together = ['admin_id', 'state']
+    
+    def __str__(self):
+        return f"Admin {self.admin_id} - {self.state}"
    
