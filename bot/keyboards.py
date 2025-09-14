@@ -188,6 +188,7 @@ def generate_payment_menu_keyboard():
 def generate_balance_payment_months_keyboard():
     """
     Генерирует клавиатуру с месяцами для оплаты с баланса
+    Логика: показываем 12 месяцев начиная с текущего месяца.
     """
     markup = InlineKeyboardMarkup()
     current_date = datetime.now()
@@ -196,17 +197,10 @@ def generate_balance_payment_months_keyboard():
     
     buttons = []
     
-    for month in range(1, 13):
-        # Определяем год для каждого месяца
-        if month < current_month:
-            # Месяц уже прошел в текущем году, значит берем следующий год
-            year = current_year + 1
-        elif month == current_month:
-            # Текущий месяц - берем следующий год
-            year = current_year + 1
-        else:
-            # Месяц еще не наступил в текущем году
-            year = current_year
+    # Генерируем 12 месяцев начиная с текущего
+    for i in range(12):
+        month = ((current_month - 1 + i) % 12) + 1
+        year = current_year + ((current_month + i - 1) // 12)
         
         month_name = MONTH_NAMES[month]
         button_text = f"{month_name} {year}"
@@ -228,8 +222,7 @@ def generate_balance_payment_months_keyboard():
 def generate_payment_months_keyboard():
     """
     Генерирует клавиатуру с 12 месяцами для выбора оплаты.
-    Логика: если сейчас март 2025, то март будет 2026 года,
-    а апрель - 2025 года (так как он еще не наступил).
+    Логика: показываем 12 месяцев начиная с текущего месяца.
     """
     markup = InlineKeyboardMarkup()
     current_date = datetime.now()
@@ -238,17 +231,10 @@ def generate_payment_months_keyboard():
     
     buttons = []
     
-    for month in range(1, 13):
-        # Определяем год для каждого месяца
-        if month < current_month:
-            # Месяц уже прошел в текущем году, значит берем следующий год
-            year = current_year + 1
-        elif month == current_month:
-            # Текущий месяц - берем следующий год
-            year = current_year + 1
-        else:
-            # Месяц еще не наступил в текущем году
-            year = current_year
+    # Генерируем 12 месяцев начиная с текущего
+    for i in range(12):
+        month = ((current_month - 1 + i) % 12) + 1
+        year = current_year + ((current_month + i - 1) // 12)
         
         month_name = MONTH_NAMES[month]
         button_text = f"{month_name} {year}"
