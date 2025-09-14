@@ -18,8 +18,9 @@ except:
 
 main_markup = InlineKeyboardMarkup()
 btn1 = InlineKeyboardButton("👤 Профиль 👤", callback_data="profile")
-btn2 = InlineKeyboardButton("💰 Оплата 💰", callback_data="payment_menu")
-main_markup.add(btn1).add(btn2)
+btn2 = InlineKeyboardButton("💳 Оплатить занятия", callback_data="start_payment")
+btn3 = InlineKeyboardButton("📊 История платежей", callback_data="payment_history")
+main_markup.add(btn1).add(btn2).add(btn3)
 
 
 # Клавиатуры для регистрации
@@ -52,15 +53,15 @@ btn1 = InlineKeyboardButton("⬅️ Назад ⬅️", callback_data="main_menu
 UNIVERSAL_BUTTONS.add(btn1)
 
 ADMIN_MARKUP = InlineKeyboardMarkup()
-btn1 = InlineKeyboardButton("👥 Просмотр оплаты учеников", callback_data="view_students")
+btn1 = InlineKeyboardButton("👥 Просмотр оплаты учеников", url="https://fundamentally116.store/bot/payment-info/")
 btn2 = InlineKeyboardButton("💵 Отметить оплату ученика", callback_data="mark_student_payment")
 ADMIN_MARKUP.add(btn1).add(btn2)
 
-# Названия месяцев на русском языке
+# Названия месяцев на русском языке (первые 3 буквы)
 MONTH_NAMES = {
-    1: "Январь", 2: "Февраль", 3: "Март", 4: "Апрель",
-    5: "Май", 6: "Июнь", 7: "Июль", 8: "Август",
-    9: "Сентябрь", 10: "Октябрь", 11: "Ноябрь", 12: "Декабрь"
+    1: "Янв", 2: "Фев", 3: "Мар", 4: "Апр",
+    5: "Май", 6: "Июн", 7: "Июл", 8: "Авг",
+    9: "Сен", 10: "Окт", 11: "Ноя", 12: "Дек"
 }
 
 def generate_students_pagination_keyboard(page=1, students_per_page=8):
@@ -97,6 +98,25 @@ def generate_students_pagination_keyboard(page=1, students_per_page=8):
     
     # Добавляем кнопку "Назад"
     markup.add(InlineKeyboardButton("⬅️ Назад", callback_data="admin_menu"))
+    
+    return markup
+
+def generate_admin_payment_method_keyboard(student_id):
+    """
+    Генерирует клавиатуру выбора способа оплаты для админа
+    """
+    markup = InlineKeyboardMarkup()
+    
+    # Кнопка для оплаты за конкретный месяц
+    month_payment_btn = InlineKeyboardButton("📅 Оплатить за месяц", callback_data=f"admin_month_payment_{student_id}")
+    
+    # Кнопка для зачисления на баланс
+    balance_payment_btn = InlineKeyboardButton("💰 Зачислить на баланс", callback_data=f"admin_balance_payment_{student_id}")
+    
+    # Кнопка назад к списку учеников
+    back_btn = InlineKeyboardButton("⬅️ Назад к списку", callback_data="mark_student_payment")
+    
+    markup.add(month_payment_btn).add(balance_payment_btn).add(back_btn)
     
     return markup
 
@@ -137,6 +157,70 @@ def generate_admin_payment_months_keyboard(student_id):
     
     # Кнопка назад к списку учеников
     back_btn = InlineKeyboardButton("⬅️ Назад к списку учеников", callback_data="mark_student_payment")
+    markup.add(back_btn)
+    
+    return markup
+
+def generate_payment_method_keyboard():
+    """Генерирует клавиатуру выбора способа оплаты"""
+    markup = InlineKeyboardMarkup()
+    
+    btn1 = InlineKeyboardButton("💳 Оплатить через ЮKassa", callback_data="pay_with_yookassa")
+    btn2 = InlineKeyboardButton("💰 Оплатить с баланса", callback_data="pay_with_balance")
+    btn3 = InlineKeyboardButton("⬅️ Назад", callback_data="payment_menu")
+    
+    markup.add(btn1).add(btn2).add(btn3)
+    
+    return markup
+
+def generate_payment_menu_keyboard():
+    """Генерирует клавиатуру меню оплаты"""
+    markup = InlineKeyboardMarkup()
+    
+    btn1 = InlineKeyboardButton("💳 Оплатить занятия", callback_data="start_payment")
+    btn2 = InlineKeyboardButton("📊 История платежей", callback_data="payment_history")
+    btn3 = InlineKeyboardButton("⬅️ Назад", callback_data="main_menu")
+    
+    markup.add(btn1).add(btn2).add(btn3)
+    
+    return markup
+
+def generate_balance_payment_months_keyboard():
+    """
+    Генерирует клавиатуру с месяцами для оплаты с баланса
+    """
+    markup = InlineKeyboardMarkup()
+    current_date = datetime.now()
+    current_month = current_date.month
+    current_year = current_date.year
+    
+    buttons = []
+    
+    for month in range(1, 13):
+        # Определяем год для каждого месяца
+        if month < current_month:
+            # Месяц уже прошел в текущем году, значит берем следующий год
+            year = current_year + 1
+        elif month == current_month:
+            # Текущий месяц - берем следующий год
+            year = current_year + 1
+        else:
+            # Месяц еще не наступил в текущем году
+            year = current_year
+        
+        month_name = MONTH_NAMES[month]
+        button_text = f"{month_name} {year}"
+        callback_data = f"pay_balance_month_{month}_{year}"
+        
+        buttons.append(InlineKeyboardButton(button_text, callback_data=callback_data))
+    
+    # Размещаем кнопки по 3 в ряд
+    for i in range(0, len(buttons), 3):
+        row_buttons = buttons[i:i+3]
+        markup.add(*row_buttons)
+    
+    # Кнопка назад
+    back_btn = InlineKeyboardButton("⬅️ Назад", callback_data="start_payment")
     markup.add(back_btn)
     
     return markup
@@ -183,17 +267,7 @@ def generate_payment_months_keyboard():
     
     return markup
 
-def generate_payment_menu_keyboard():
-    """Генерирует клавиатуру меню оплаты"""
-    markup = InlineKeyboardMarkup()
-    
-    btn1 = InlineKeyboardButton("💳 Оплатить занятия", callback_data="start_payment")
-    btn2 = InlineKeyboardButton("📊 История платежей", callback_data="payment_history")
-    btn3 = InlineKeyboardButton("⬅️ Назад", callback_data="main_menu")
-    
-    markup.add(btn1).add(btn2).add(btn3)
-    
-    return markup
+
 
 def generate_payment_confirmation_keyboard(month, year):
     """Генерирует клавиатуру подтверждения оплаты"""
