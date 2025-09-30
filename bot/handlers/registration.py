@@ -1,4 +1,4 @@
-from bot.models import User
+from bot.models import User, StudentProfile
 from bot import bot
 from django.conf import settings
 from bot.keyboards import (
@@ -132,6 +132,22 @@ def handle_course_or_class_choice(call: CallbackQuery) -> None:
         user.course_or_class = course_or_class
         user.is_registered = True
         user.save()
+        
+        # Создаем первый профиль ученика
+        with transaction.atomic():
+            # Деактивируем все существующие профили
+            user.student_profiles.update(is_active=False)
+            
+            # Создаем новый активный профиль
+            profile = StudentProfile.objects.create(
+                user=user,
+                profile_name=user.full_name or f"Профиль {user.telegram_id}",
+                full_name=user.full_name,
+                education_type=user.education_type,
+                course_or_class=user.course_or_class,
+                is_active=True,
+                is_registered=True
+            )
         
         # Завершаем регистрацию
         bot.edit_message_text(

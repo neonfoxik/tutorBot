@@ -162,19 +162,13 @@ def select_payment_month(call: CallbackQuery) -> None:
         
         user = User.objects.get(telegram_id=str(call.from_user.id))
         
-        # Получаем активный профиль
-        active_profile = get_active_profile(user)
-        if not active_profile:
-            bot.answer_callback_query(call.id, "У вас нет активного профиля")
-            return
-        
-        # Проверяем, не оплачен ли уже этот месяц для профиля
-        if PaymentHistory.is_month_paid(user, month, year, active_profile):
+        # Проверяем, не оплачен ли уже этот месяц
+        if PaymentHistory.is_month_paid(user, month, year):
             bot.answer_callback_query(call.id, f"Месяц {MONTH_NAMES[month]} {year} уже оплачен!")
             return
         
         # Получаем информацию о цене
-        price_info = get_price_by_class(active_profile.course_or_class)
+        price_info = get_price_by_class(user.course_or_class)
         
         if not price_info:
             bot.answer_callback_query(call.id, "Ошибка определения цены")
@@ -183,18 +177,17 @@ def select_payment_month(call: CallbackQuery) -> None:
         # Создаем платеж через ЮKassa
         yookassa_client = YooKassaClient()
         
-        amount = Decimal(str(price_info['price']))
-        description = f"Оплата занятий за {MONTH_NAMES[month]} {year} - {price_info['name']} - {active_profile.profile_name}"
+        amount = Decimal(str(price_info['price']))  # Используем тестовую цену
+        description = f"Оплата занятий за {MONTH_NAMES[month]} {year} - {price_info['name']}"
         
         metadata = {
             "user_id": user.telegram_id,
-            "profile_id": active_profile.id,
             "month": month,
             "year": year,
             "pricing_plan": price_info['key']
         }
         
-        print(f"Создаем платеж для пользователя {user.telegram_id}, профиль {active_profile.id}")
+        print(f"Создаем платеж для пользователя {user.telegram_id}")
         print(f"Сумма: {amount}, Описание: {description}")
         print(f"Метаданные: {metadata}")
         
@@ -225,7 +218,6 @@ def select_payment_month(call: CallbackQuery) -> None:
         # Сохраняем платеж в базу данных
         payment = Payment.objects.create(
             user=user,
-            student_profile=active_profile,
             yookassa_payment_id=yookassa_response['id'],
             amount=amount,
             status=yookassa_response['status'],
@@ -242,8 +234,8 @@ def select_payment_month(call: CallbackQuery) -> None:
         markup = generate_check_payment_keyboard(payment.yookassa_payment_id, month, year)
         
         text = f"✅ Платеж создан!\n\n"
-        text += f"👤 Профиль: {active_profile.profile_name}\n"
-        text += f"📚 Класс: {active_profile.course_or_class}\n"
+        text += f"👤 Ученик: {user.full_name}\n"
+        text += f"📚 Класс: {user.course_or_class}\n"
         text += f"💯 Тариф: {price_info['name']}\n"
         text += f"📅 Месяц: {MONTH_NAMES[month]} {year}\n"
         text += f"💰 Сумма: {amount} руб.\n\n"
@@ -276,19 +268,13 @@ def select_balance_payment_month(call: CallbackQuery) -> None:
         
         user = User.objects.get(telegram_id=str(call.from_user.id))
         
-        # Получаем активный профиль
-        active_profile = get_active_profile(user)
-        if not active_profile:
-            bot.answer_callback_query(call.id, "У вас нет активного профиля")
-            return
-        
-        # Проверяем, не оплачен ли уже этот месяц для профиля
-        if PaymentHistory.is_month_paid(user, month, year, active_profile):
+        # Проверяем, не оплачен ли уже этот месяц
+        if PaymentHistory.is_month_paid(user, month, year):
             bot.answer_callback_query(call.id, f"Месяц {MONTH_NAMES[month]} {year} уже оплачен!")
             return
         
         # Получаем информацию о цене
-        price_info = get_price_by_class(active_profile.course_or_class)
+        price_info = get_price_by_class(user.course_or_class)
         
         if not price_info:
             bot.answer_callback_query(call.id, "Ошибка определения цены")
@@ -296,19 +282,18 @@ def select_balance_payment_month(call: CallbackQuery) -> None:
         
         amount = Decimal(str(price_info['price']))
         
-        # Проверяем, достаточно ли средств на балансе профиля
-        if active_profile.balance < amount:
-            bot.answer_callback_query(call.id, f"Недостаточно средств на балансе!\nТребуется: {amount} ₽\nДоступно: {active_profile.balance} ₽")
+        # Проверяем, достаточно ли средств на балансе
+        if user.balance < amount:
+            bot.answer_callback_query(call.id, f"Недостаточно средств на балансе!\nТребуется: {amount} ₽\nДоступно: {user.balance} ₽")
             return
         
-        # Списываем деньги с баланса профиля
-        active_profile.balance -= amount
-        active_profile.save()
+        # Списываем деньги с баланса
+        user.balance -= amount
+        user.save()
         
         # Создаем запись в истории оплат
         PaymentHistory.objects.create(
             user=user,
-            student_profile=active_profile,
             payment=None,  # Нет платежа через ЮKassa
             month=month,
             year=year,
@@ -319,25 +304,129 @@ def select_balance_payment_month(call: CallbackQuery) -> None:
         )
         
         # Уведомляем пользователя об успешной оплате
-        notify_payment_success(user.telegram_id, month, year, amount, active_profile)
+        notify_payment_success(user.telegram_id, month, year, amount)
         
         # Уведомляем всех администраторов
-        notify_admins_about_payment(user, month, year, amount, active_profile)
+        notify_admins_about_payment(user, month, year, amount)
         
         # Обновляем сообщение
         text = f"🎉 Оплата с баланса прошла успешно!\n\n"
-        text += f"👤 Профиль: {active_profile.profile_name}\n"
-        text += f"📚 Класс: {active_profile.course_or_class}\n"
+        text += f"👤 Ученик: {user.full_name}\n"
+        text += f"📚 Класс: {user.course_or_class}\n"
         text += f"💯 Тариф: {price_info['name']}\n"
         text += f"📅 Месяц: {MONTH_NAMES[month]} {year}\n"
         text += f"💰 Сумма: {amount} ₽\n"
-        text += f"💳 Остаток на балансе: {active_profile.balance} ₽\n\n"
+        text += f"💳 Остаток на балансе: {user.balance} ₽\n\n"
         text += f"✅ Теперь вы можете посещать занятия в этом месяце!"
         
         bot.edit_message_text(
             chat_id=call.message.chat.id,
             text=text,
             reply_markup=generate_payment_menu_keyboard(),
+            message_id=call.message.message_id
+        )
+    
+    except (ValueError, User.DoesNotExist) as e:
+        bot.answer_callback_query(call.id, "Ошибка обработки")
+
+
+def confirm_payment(call: CallbackQuery) -> None:
+    """Подтверждение и создание платежа"""
+    try:
+        # Парсим callback_data: confirm_payment_{month}_{year}
+        parts = call.data.split('_')
+        if len(parts) != 4:
+            bot.answer_callback_query(call.id, "Ошибка в данных")
+            return
+        
+        month = int(parts[2])
+        year = int(parts[3])
+        
+        user = User.objects.get(telegram_id=str(call.from_user.id))
+        
+        # Проверяем повторно, не оплачен ли месяц
+        if PaymentHistory.is_month_paid(user, month, year):
+            bot.answer_callback_query(call.id, "Этот месяц уже оплачен!")
+            return
+        
+        # Получаем информацию о цене
+        price_info = get_price_by_class(user.course_or_class)
+        
+        if not price_info:
+            bot.answer_callback_query(call.id, "Ошибка определения цены")
+            return
+        
+        # Создаем платеж через ЮKassa
+        yookassa_client = YooKassaClient()
+        
+        amount = Decimal(str(price_info['price']))  # Используем тестовую цену
+        description = f"Оплата занятий за {MONTH_NAMES[month]} {year} - {price_info['name']}"
+        
+        metadata = {
+            "user_id": user.telegram_id,
+            "month": month,
+            "year": year,
+            "pricing_plan": price_info['key']
+        }
+        
+        print(f"Создаем платеж для пользователя {user.telegram_id}")
+        print(f"Сумма: {amount}, Описание: {description}")
+        print(f"Метаданные: {metadata}")
+        
+        yookassa_response = yookassa_client.create_payment(
+            amount=amount,
+            description=description,
+            metadata=metadata
+        )
+        
+        print(f"Ответ от ЮKassa: {yookassa_response}")
+        
+        if not yookassa_response:
+            text = "❌ Ошибка при создании платежа.\n\n"
+            text += "Возможные причины:\n"
+            text += "• Неправильные настройки ЮKassa\n"
+            text += "• Проблемы с интернет-соединением\n"
+            text += "• Ошибка на стороне ЮKassa\n\n"
+            text += "Попробуйте позже или обратитесь к администратору."
+            
+            bot.edit_message_text(
+                chat_id=call.message.chat.id,
+                text=text,
+                reply_markup=UNIVERSAL_BUTTONS,
+                message_id=call.message.message_id
+            )
+            return
+        
+        # Сохраняем платеж в базу данных
+        payment = Payment.objects.create(
+            user=user,
+            yookassa_payment_id=yookassa_response['id'],
+            amount=amount,
+            status=yookassa_response['status'],
+            description=description,
+            payment_month=month,
+            payment_year=year,
+            pricing_plan=price_info['key']
+        )
+        
+        # Получаем ссылку для оплаты
+        payment_url = yookassa_response['confirmation']['confirmation_url']
+        
+        # Создаем клавиатуру с ссылкой на оплату и кнопкой проверки
+        markup = generate_check_payment_keyboard(payment.yookassa_payment_id, month, year)
+        
+        text = f"✅ Платеж создан!\n\n"
+        text += f"💰 Сумма: {amount} руб.\n"
+        text += f"📅 За месяц: {MONTH_NAMES[month]} {year}\n"
+        text += f"💯 Тариф: {price_info['name']}\n\n"
+        text += "1️⃣ Перейдите по ссылке и оплатите\n"
+        text += "2️⃣ После оплаты нажмите 'Проверить оплату'\n"
+        text += "3️⃣ Получите подтверждение"
+        
+        bot.edit_message_text(
+            chat_id=call.message.chat.id,
+            text=text,
+            reply_markup=markup,
             message_id=call.message.message_id
         )
     
@@ -360,14 +449,8 @@ def check_payment(call: CallbackQuery) -> None:
         
         user = User.objects.get(telegram_id=str(call.from_user.id))
         
-        # Получаем активный профиль
-        active_profile = get_active_profile(user)
-        if not active_profile:
-            bot.answer_callback_query(call.id, "У вас нет активного профиля")
-            return
-        
-        # Проверяем, не оплачен ли уже этот месяц для профиля
-        if PaymentHistory.is_month_paid(user, month, year, active_profile):
+        # Проверяем, не оплачен ли уже этот месяц
+        if PaymentHistory.is_month_paid(user, month, year):
             bot.answer_callback_query(call.id, f"Месяц {MONTH_NAMES[month]} {year} уже оплачен!")
             return
         
@@ -392,7 +475,6 @@ def check_payment(call: CallbackQuery) -> None:
                 # Создаем запись в истории оплат
                 PaymentHistory.objects.create(
                     user=user,
-                    student_profile=active_profile,
                     payment=payment,
                     month=month,
                     year=year,
@@ -401,14 +483,13 @@ def check_payment(call: CallbackQuery) -> None:
                 )
                 
                 # Уведомляем пользователя об успешной оплате
-                notify_payment_success(user.telegram_id, month, year, payment.amount, active_profile)
+                notify_payment_success(user.telegram_id, month, year, payment.amount)
                 
                 # Уведомляем всех администраторов
-                notify_admins_about_payment(user, month, year, payment.amount, active_profile)
+                notify_admins_about_payment(user, month, year, payment.amount)
                 
                 # Обновляем сообщение
                 text = f"🎉 Оплата подтверждена!\n\n"
-                text += f"👤 Профиль: {active_profile.profile_name}\n"
                 text += f"💰 Сумма: {payment.amount} руб.\n"
                 text += f"📅 Месяц: {MONTH_NAMES[month]} {year}\n"
                 text += f"✅ Теперь вы можете посещать занятия в этом месяце!"
@@ -440,27 +521,10 @@ def payment_history(call: CallbackQuery) -> None:
     try:
         user = User.objects.get(telegram_id=str(call.from_user.id))
         
-        # Получаем активный профиль
-        active_profile = get_active_profile(user)
-        if not active_profile:
-            text = "❌ У вас нет активного профиля.\n"
-            text += "Создайте профиль в разделе 'Мои профили'."
-            bot.edit_message_text(
-                chat_id=call.message.chat.id,
-                text=text,
-                reply_markup=UNIVERSAL_BUTTONS,
-                message_id=call.message.message_id
-            )
-            return
+        # Получаем историю оплаченных месяцев
+        history = PaymentHistory.objects.filter(user=user).order_by('-year', '-month')
         
-        # Получаем историю оплаченных месяцев для профиля
-        history = PaymentHistory.objects.filter(
-            user=user, 
-            student_profile=active_profile
-        ).order_by('-year', '-month')
-        
-        text = f"📊 История оплат\n\n"
-        text += f"👤 Профиль: {active_profile.profile_name}\n\n"
+        text = "📊 История оплат\n\n"
         
         if history.exists():
             for record in history:
@@ -481,11 +545,10 @@ def payment_history(call: CallbackQuery) -> None:
         bot.answer_callback_query(call.id, "Пользователь не найден")
 
 
-def notify_payment_success(user_telegram_id: str, month: int, year: int, amount: Decimal, profile: StudentProfile):
+def notify_payment_success(user_telegram_id: str, month: int, year: int, amount: Decimal):
     """Уведомляет пользователя об успешной оплате"""
     try:
         text = f"🎉 Оплата прошла успешно!\n\n"
-        text += f"👤 Профиль: {profile.profile_name}\n"
         text += f"💰 Сумма: {amount} руб.\n"
         text += f"📅 Оплачен месяц: {MONTH_NAMES[month]} {year}\n"
         text += f"✅ Теперь вы можете посещать занятия в этом месяце!"
@@ -499,7 +562,7 @@ def notify_payment_success(user_telegram_id: str, month: int, year: int, amount:
         print(f"Ошибка при отправке уведомления: {e}")
 
 
-def notify_admins_about_payment(user: User, month: int, year: int, amount: Decimal, profile: StudentProfile):
+def notify_admins_about_payment(user: User, month: int, year: int, amount: Decimal):
     """Уведомляет всех администраторов о новой оплате"""
     try:
         # Получаем всех администраторов
@@ -509,9 +572,9 @@ def notify_admins_about_payment(user: User, month: int, year: int, amount: Decim
             return
         
         text = f"💰 Новая оплата!\n\n"
-        text += f"👤 Ученик: {profile.profile_name}\n"
+        text += f"👤 Ученик: {user.full_name}\n"
         text += f"🆔 Telegram ID: {user.telegram_id}\n"
-        text += f"📚 Класс: {profile.course_or_class}\n"
+        text += f"📚 Класс: {user.course_or_class}\n"
         text += f"📅 Месяц: {MONTH_NAMES[month]} {year}\n"
         text += f"💰 Сумма: {amount} руб.\n"
         text += f"⏰ Время: {timezone.now().strftime('%d.%m.%Y %H:%M')}"
@@ -527,4 +590,4 @@ def notify_admins_about_payment(user: User, month: int, year: int, amount: Decim
                 print(f"Ошибка отправки уведомления администратору {admin.telegram_id}: {e}")
                 
     except Exception as e:
-        print(f"Ошибка при уведомлении администраторов: {e}")
+        print(f"Ошибка при уведомлении администраторов: {e}") 

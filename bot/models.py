@@ -75,6 +75,14 @@ class Payment(models.Model):
         related_name='payments',
         verbose_name='Пользователь'
     )
+    student_profile = models.ForeignKey(
+        'StudentProfile',
+        on_delete=models.CASCADE,
+        related_name='payments',
+        verbose_name='Профиль ученика',
+        null=True,
+        blank=True
+    )
     yookassa_payment_id = models.CharField(
         max_length=100,
         unique=True,
@@ -157,6 +165,14 @@ class PaymentHistory(models.Model):
         related_name='payment_history',
         verbose_name='Пользователь'
     )
+    student_profile = models.ForeignKey(
+        'StudentProfile',
+        on_delete=models.CASCADE,
+        related_name='payment_history',
+        verbose_name='Профиль ученика',
+        null=True,
+        blank=True
+    )
     payment = models.ForeignKey(
         Payment,
         on_delete=models.CASCADE,
@@ -211,18 +227,24 @@ class PaymentHistory(models.Model):
         return f"{self.user.full_name} - {self.month:02d}.{self.year} - {self.amount_paid} руб."
     
     @classmethod
-    def is_month_paid(cls, user, month, year):
+    def is_month_paid(cls, user, month, year, student_profile=None):
         """Проверить, оплачен ли указанный месяц"""
-        return cls.objects.filter(
+        query = cls.objects.filter(
             user=user,
             month=month,
             year=year
-        ).exists()
+        )
+        if student_profile:
+            query = query.filter(student_profile=student_profile)
+        return query.exists()
     
     @classmethod
-    def get_paid_months(cls, user):
+    def get_paid_months(cls, user, student_profile=None):
         """Получить все оплаченные месяцы для пользователя"""
-        return cls.objects.filter(user=user).values_list('month', 'year')
+        query = cls.objects.filter(user=user)
+        if student_profile:
+            query = query.filter(student_profile=student_profile)
+        return query.values_list('month', 'year')
 
 
 class AdminState(models.Model):
@@ -252,4 +274,81 @@ class AdminState(models.Model):
     
     def __str__(self):
         return f"Admin {self.admin_id} - {self.state}"
+
+
+class StudentProfile(models.Model):
+    """Модель для профилей учеников под одним Telegram аккаунтом"""
+    
+    EDUCATION_CHOICES = [
+        ('school', 'Школа'),
+        ('university', 'ВУЗ'),
+    ]
+    
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='student_profiles',
+        verbose_name='Пользователь Telegram'
+    )
+    profile_name = models.CharField(
+        max_length=100,
+        verbose_name="Имя профиля",
+        help_text="Например: 'Иван Петров' или 'Мария Сидорова'"
+    )
+    full_name = models.CharField(
+        max_length=200,
+        verbose_name="ФИО",
+        null=True,
+        blank=True
+    )
+    education_type = models.CharField(
+        max_length=20,
+        choices=EDUCATION_CHOICES,
+        verbose_name="Тип образования",
+        null=True,
+        blank=True
+    )
+    course_or_class = models.CharField(
+        max_length=10,
+        verbose_name="Курс или класс",
+        null=True,
+        blank=True
+    )
+    is_active = models.BooleanField(
+        default=True,
+        verbose_name="Активный профиль"
+    )
+    is_registered = models.BooleanField(
+        default=False,
+        verbose_name="Завершена регистрация"
+    )
+    register_date = models.DateField(
+        default='2025-08-25',
+        verbose_name='Дата регистрации'
+    )
+    balance = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=0,
+        verbose_name="Баланс"
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="Дата создания"
+    )
+    
+    class Meta:
+        verbose_name = "Профиль ученика"
+        verbose_name_plural = "Профили учеников"
+        unique_together = ['user', 'profile_name']
+    
+    def __str__(self):
+        return f"{self.profile_name} ({self.user.telegram_id})"
+    
+    def get_education_type_display(self):
+        """Возвращает отображаемое название типа образования"""
+        for choice in self.EDUCATION_CHOICES:
+            if choice[0] == self.education_type:
+                return choice[1]
+        return self.education_type
    

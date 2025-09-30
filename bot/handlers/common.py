@@ -11,7 +11,7 @@ from telebot.types import (
     InlineKeyboardMarkup,
     CallbackQuery,
 )
-from bot.models import User
+from bot.models import User, StudentProfile
 from bot.texts import MAIN_TEXT
 from bot.keyboards import main_markup, UNIVERSAL_BUTTONS
 from .registration import start_registration
@@ -35,17 +35,6 @@ def menu_call(call: CallbackQuery) -> None:
                           message_id=call.message.message_id)
 
 def profile(call: CallbackQuery) -> None:
-    """Обработчик профиля"""
-    try:
-        user = User.objects.get(telegram_id=str(call.from_user.id))
-        profile_text = f"👤 Профиль\n\n"
-        profile_text += f"ID: {user.telegram_id}\n"
-        profile_text += f"ФИО: {user.full_name or 'Не указано'}\n"
-        profile_text += f"Образование: {user.get_education_type_display() or 'Не указано'}\n"
-        profile_text += f"Курс/Класс: {user.course_or_class or 'Не указано'}\n"
-        profile_text += f"Статус: {'Зарегистрирован' if user.is_registered else 'Не зарегистрирован'}"
-        
-        bot.edit_message_text(chat_id=call.message.chat.id, text=profile_text, reply_markup=UNIVERSAL_BUTTONS,
-                              message_id=call.message.message_id)
-    except User.DoesNotExist:
-        bot.answer_callback_query(call.id, "Пользователь не найден")
+    """Обработчик профиля - перенаправляет в меню профилей"""
+    from .profiles import profiles_menu
+    profiles_menu(call)

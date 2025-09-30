@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import User, Payment, PaymentHistory
+from .models import User, StudentProfile, Payment, PaymentHistory
 
 class UserAdmin(admin.ModelAdmin):
     list_display = ('telegram_id', 'full_name', 'education_type', 'course_or_class', 'is_registered', 'is_admin')
@@ -18,25 +18,37 @@ class UserAdmin(admin.ModelAdmin):
 admin.site.register(User, UserAdmin)
 
 
-@admin.register(Payment)
-class PaymentAdmin(admin.ModelAdmin):
-    list_display = ('yookassa_payment_id', 'user', 'amount', 'status', 'payment_month', 'payment_year', 'created_at')
-    list_filter = ('status', 'payment_month', 'payment_year', 'created_at', 'pricing_plan')
-    search_fields = ('yookassa_payment_id', 'user__full_name', 'user__telegram_id')
-    readonly_fields = ('yookassa_payment_id', 'created_at', 'updated_at')
-    ordering = ('-created_at',)
+@admin.register(StudentProfile)
+class StudentProfileAdmin(admin.ModelAdmin):
+    list_display = ('profile_name', 'user', 'full_name', 'education_type', 'course_or_class', 'is_active', 'balance', 'created_at')
+    list_filter = ('education_type', 'is_active', 'is_registered', 'created_at')
+    search_fields = ('profile_name', 'full_name', 'user__telegram_id')
+    list_editable = ('is_active',)
+    ordering = ('-is_active', '-created_at')
     
     def get_queryset(self, request):
         return super().get_queryset(request).select_related('user')
 
 
+@admin.register(Payment)
+class PaymentAdmin(admin.ModelAdmin):
+    list_display = ('yookassa_payment_id', 'user', 'student_profile', 'amount', 'status', 'payment_month', 'payment_year', 'created_at')
+    list_filter = ('status', 'payment_month', 'payment_year', 'created_at', 'pricing_plan')
+    search_fields = ('yookassa_payment_id', 'user__full_name', 'user__telegram_id', 'student_profile__profile_name')
+    readonly_fields = ('yookassa_payment_id', 'created_at', 'updated_at')
+    ordering = ('-created_at',)
+    
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related('user', 'student_profile')
+
+
 @admin.register(PaymentHistory)
 class PaymentHistoryAdmin(admin.ModelAdmin):
-    list_display = ('user', 'month', 'year', 'amount_paid', 'pricing_plan', 'paid_at')
+    list_display = ('user', 'student_profile', 'month', 'year', 'amount_paid', 'pricing_plan', 'paid_at')
     list_filter = ('month', 'year', 'pricing_plan', 'paid_at')
-    search_fields = ('user__full_name', 'user__telegram_id')
+    search_fields = ('user__full_name', 'user__telegram_id', 'student_profile__profile_name')
     readonly_fields = ('paid_at',)
     ordering = ('-year', '-month')
     
     def get_queryset(self, request):
-        return super().get_queryset(request).select_related('user', 'payment')
+        return super().get_queryset(request).select_related('user', 'student_profile', 'payment')

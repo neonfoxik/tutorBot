@@ -28,7 +28,7 @@ from bot.handlers.admin.admin import (
     handle_admin_mark_payment
 )
 
-from .models import PaymentHistory, User
+from .models import PaymentHistory, User, StudentProfile
 
 # Регистрируем обработчики команд
 # Обработчик команды /start (должен быть первым!)
@@ -92,12 +92,13 @@ bot.register_message_handler(
 
 
 def payment_info(request):
-    all_users = User.objects.all()
+    # Переходим на уровень профилей учеников (а не пользователей)
+    all_profiles = StudentProfile.objects.select_related('user').all()
 
     if request.method == 'POST':
         course = request.POST.get('course', '*')
         if course != "*":
-            all_users = all_users.filter(course_or_class=course)
+            all_profiles = all_profiles.filter(course_or_class=course)
 
     years = set(PaymentHistory.objects.values_list('year', flat=True))
     if len(years) == 0:
@@ -123,16 +124,23 @@ def payment_info(request):
         ]}
 
         for month in year_info['months']:
-            for user in all_users:
-                if user.register_date.month <= month['id']:
-                    if PaymentHistory.objects.filter(month=month["id"], year=year, user__telegram_id=user.telegram_id).count() > 0:
+            for profile in all_profiles:
+                # учитываем дату регистрации профиля
+                if profile.register_date.month <= month['id']:
+                    ph_qs = PaymentHistory.objects.filter(
+                        month=month["id"],
+                        year=year,
+                        user=profile.user,
+                        student_profile=profile,
+                    )
+                    if ph_qs.exists():
                         month['payers_count'] += 1
                         month['is_paid'] = True
-                        user.payment = PaymentHistory.objects.get(month=month["id"], year=year, user=user)
-                        month['paid_users'].append(PaymentHistory.objects.get(month=month["id"], year=year, user=user))
-                        total_income += PaymentHistory.objects.get(month=month["id"], year=year, user=user).amount_paid
+                        payment_record = ph_qs.first()
+                        month['paid_users'].append(payment_record)
+                        total_income += payment_record.amount_paid
                     else:
-                        month['unpaid_users'].append(user)
+                        month['unpaid_users'].append(profile)
 
                 month['all_users'] += 1
             month['all_students'] = month['paid_users'] + month['unpaid_users']
@@ -141,7 +149,7 @@ def payment_info(request):
         'all_info': all_info,
         'now_year': datetime.now().year,
         'now_month': datetime.now().month,
-        'total_students': all_users.count(),
+        'total_students': all_profiles.count(),
         'total_income': total_income
     })
 
@@ -218,12 +226,86 @@ def start_polling(request: HttpRequest) -> JsonResponse:
 bot.register_callback_query_handler(menu_call, func=lambda c: c.data == "main_menu")
 bot.register_callback_query_handler(profile, func=lambda c: c.data == "profile")
 
-# Обработчики для регистрации
+# Обработчики для профилей
+bot.register_callback_query_handler(profiles_menu, func=lambda c: c.data == "profiles_menu")
+bot.register_callback_query_handler(view_profiles, func=lambda c: c.data == "view_profiles")
+bot.register_callback_query_handler(create_profile, func=lambda c: c.data == "create_profile")
+bot.register_callback_query_handler(confirm_profile_creation, func=lambda c: c.data == "confirm_profile_creation")
+
+# Обработчики для выбора профиля
+@bot.callback_query_handler(func=lambda call: call.data.startswith("select_profile_"))
+def handle_profile_selection(call):
+    """Обрабатывает выбор профиля"""
+    from bot.handlers.profiles import select_profile
+    select_profile(call)
+
+# Обработчики для переключения профиля
+@bot.callback_query_handler(func=lambda call: call.data.startswith("switch_to_profile_"))
+def handle_profile_switch(call):
+    """Обрабатывает переключение на профиль"""
+    from bot.handlers.profiles import switch_to_profile
+    switch_to_profile(call)
+
+# Обработчики для управления данными профиля
+@bot.callback_query_handler(func=lambda call: call.data.startswith("edit_profile_data_"))
+def handle_profile_data_management(call):
+    """Обрабатывает управление данными профиля"""
+    from bot.handlers.profiles import edit_profile_data
+    edit_profile_data(call)
+
+# Обработчики для удаления профиля
+@bot.callback_query_handler(func=lambda call: call.data.startswith("delete_profile_"))
+def handle_profile_deletion(call):
+    """Обрабатывает удаление профиля"""
+    from bot.handlers.profiles import delete_profile
+    delete_profile(call)
+
+# Обработчики для подтверждения удаления профиля
+@bot.callback_query_handler(func=lambda call: call.data.startswith("confirm_delete_profile_"))
+def handle_profile_deletion_confirmation(call):
+    """Обрабатывает первое подтверждение удаления профиля"""
+    from bot.handlers.profiles import confirm_delete_profile
+    confirm_delete_profile(call)
+
+# Обработчики для финального удаления профиля
+@bot.callback_query_handler(func=lambda call: call.data.startswith("final_delete_profile_"))
+def handle_profile_final_deletion(call):
+    """Обрабатывает финальное удаление профиля"""
+    from bot.handlers.profiles import final_delete_profile
+    final_delete_profile(call)
+
+# Обработчики для создания профиля
+@bot.callback_query_handler(func=lambda call: call.data.startswith("profile_education_"))
+def handle_profile_education_selection(call):
+    """Обрабатывает выбор образования для профиля"""
+    from bot.handlers.profiles import handle_profile_education_choice
+    handle_profile_education_choice(call)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("profile_course_"))
+def handle_profile_course_selection(call):
+    """Обрабатывает выбор курса для профиля"""
+    from bot.handlers.profiles import handle_profile_course_or_class_choice
+    handle_profile_course_or_class_choice(call)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("profile_class_"))
+def handle_profile_class_selection(call):
+    """Обрабатывает выбор класса для профиля"""
+    from bot.handlers.profiles import handle_profile_course_or_class_choice
+    handle_profile_course_or_class_choice(call)
+
+# Обработчики для регистрации и создания профилей
 @bot.message_handler(func=lambda message: not message.text.startswith('/'))
 def handle_all_messages(message):
-    """Обрабатывает все текстовые сообщения для регистрации (кроме команд)"""
-    from bot.handlers.registration import handle_registration_message
-    handle_registration_message(message)
+    """Обрабатывает все текстовые сообщения для регистрации и создания профилей (кроме команд)"""
+    from bot.handlers.registration import handle_registration_message, is_user_registering
+    from bot.handlers.profiles import handle_profile_creation_message, is_user_creating_profile
+    
+    # Проверяем, находится ли пользователь в процессе создания профиля
+    if is_user_creating_profile(str(message.from_user.id)):
+        handle_profile_creation_message(message)
+    # Проверяем, находится ли пользователь в процессе регистрации
+    elif is_user_registering(str(message.from_user.id)):
+        handle_registration_message(message)
 
 # Обработчики для выбора места учебы
 @bot.callback_query_handler(func=lambda call: call.data.startswith("education_"))
@@ -260,11 +342,7 @@ def handle_payment_month_selection(call):
     from bot.handlers.payments import select_payment_month
     select_payment_month(call)
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("confirm_payment_"))
-def handle_payment_confirmation(call):
-    """Обрабатывает подтверждение платежа"""
-    from bot.handlers.payments import confirm_payment
-    confirm_payment(call)
+# Обработчик confirm_payment удален - функция больше не используется
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("check_payment_"))
 def handle_payment_check(call):
