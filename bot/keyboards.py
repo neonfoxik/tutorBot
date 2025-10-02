@@ -266,12 +266,12 @@ def generate_payment_confirmation_keyboard(month, year):
     
     return markup
 
-def generate_check_payment_keyboard(payment_id, month, year):
-    """Генерирует клавиатуру для проверки оплаты"""
+def generate_check_payment_keyboard(payment_url, payment_id, month, year):
+    """Генерирует клавиатуру для перехода к оплате и проверки статуса"""
     markup = InlineKeyboardMarkup()
     
     # Кнопка для перехода к оплате
-    pay_btn = InlineKeyboardButton("💳 Перейти к оплате", url=f"https://yoomoney.ru/checkout/payments/v2/contract?orderId={payment_id}")
+    pay_btn = InlineKeyboardButton("💳 Перейти к оплате", url=payment_url)
     
     # Кнопка для проверки оплаты
     check_btn = InlineKeyboardButton("🔍 Проверить оплату", callback_data=f"check_payment_{payment_id}_{month}_{year}")

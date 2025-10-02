@@ -235,11 +235,11 @@ def select_payment_month(call: CallbackQuery) -> None:
             pricing_plan=price_info['key']
         )
         
-        # Получаем ссылку для оплаты
-        payment_url = yookassa_response['confirmation']['confirmation_url']
+        # Получаем ссылку для оплаты (confirmation_url)
+        payment_url = yookassa_response.get('confirmation', {}).get('confirmation_url')
         
-        # Создаем клавиатуру с ссылкой на оплату и кнопкой проверки
-        markup = generate_check_payment_keyboard(payment.yookassa_payment_id, month, year)
+        # Создаем клавиатуру с реальной ссылкой на оплату и кнопкой проверки
+        markup = generate_check_payment_keyboard(payment_url, payment.yookassa_payment_id, month, year)
         
         text = f"✅ Платеж создан!\n\n"
         text += f"👤 Профиль: {active_profile.profile_name}\n"
