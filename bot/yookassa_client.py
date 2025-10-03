@@ -40,23 +40,25 @@ class YooKassaClient:
             },
             "confirmation": {
                 "type": "redirect",
-                "return_url": return_url or "https://t.me/your_bot_username"
+                "return_url": return_url or "https://t.me/"
             },
             "capture": True,
             "description": description,
             "receipt": {
                 "customer": {
-                    "email": "test@example.com"  # В реальном приложении берем из профиля пользователя
+                    "email": "customer@example.com"  # Обязательное поле для чека
                 },
                 "items": [
                     {
                         "description": description,
+                        "quantity": "1.00",
                         "amount": {
                             "value": str(amount),
                             "currency": "RUB"
                         },
-                        "vat_code": 1,  # Код НДС (1 = без НДС)
-                        "quantity": "1"
+                        "vat_code": "1",  # Без НДС
+                        "payment_mode": "full_prepayment",  # Полная предоплата
+                        "payment_subject": "service"  # Услуга
                     }
                 ]
             }
@@ -117,7 +119,18 @@ class YooKassaClient:
             response.raise_for_status()
             result = response.json()
             print(f"Успешный ответ: {json.dumps(result, ensure_ascii=False, indent=2)}")
-            return result
+            
+            # Проверяем наличие URL для оплаты
+            if 'confirmation' in result and 'confirmation_url' in result['confirmation']:
+                return {
+                    'id': result['id'],
+                    'confirmation': {
+                        'confirmation_url': result['confirmation']['confirmation_url']
+                    }
+                }
+            else:
+                print("❌ В ответе нет URL для оплаты")
+                return None
             
         except requests.exceptions.ConnectTimeout:
             print("❌ Таймаут соединения с ЮKassa")
@@ -229,6 +242,17 @@ class YooKassaClient:
             return None
 
 
+# Создаем глобальный экземпляр клиента
+client = YooKassaClient()
+
+
+def create_payment(amount, description, return_url=None, metadata=None):
+    """
+    Функция-обертка для создания платежа через глобальный экземпляр клиента
+    """
+    return client.create_payment(amount, description, return_url, metadata)
+
+
 def process_webhook(webhook_data):
     """
     Обработка уведомлений от ЮKassa
@@ -287,4 +311,4 @@ def process_webhook(webhook_data):
         return True
     except Exception as e:
         print(f"Ошибка при обработке webhook: {e}")
-        return False 
+        return False

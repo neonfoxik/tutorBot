@@ -1,16 +1,10 @@
 from bot.models import User, StudentProfile
 from bot import bot
 from django.conf import settings
-from bot.keyboards import (
-    education_choice_markup, 
-    university_courses_markup, 
-    school_classes_markup
-)
+from bot.keyboards import school_classes_markup
 from bot.texts import (
-    REGISTRATION_WELCOME, 
-    REGISTRATION_EDUCATION, 
-    REGISTRATION_UNIVERSITY_COURSE, 
-    REGISTRATION_SCHOOL_CLASS, 
+    REGISTRATION_WELCOME,
+    REGISTRATION_CLASS,
     REGISTRATION_COMPLETE
 )
 from telebot.types import CallbackQuery, Message
@@ -67,15 +61,15 @@ def handle_registration_message(message: Message) -> None:
             user.full_name = full_name
             user.save()
             
-            # Переходим к выбору места учебы
-            state['step'] = 'waiting_education_choice'
-            bot.send_message(message.chat.id, REGISTRATION_EDUCATION, reply_markup=education_choice_markup)
+            # Переходим к выбору класса
+            state['step'] = 'waiting_class'
+            bot.send_message(message.chat.id, REGISTRATION_CLASS, reply_markup=school_classes_markup)
         except Exception as e:
             bot.send_message(message.chat.id, "Произошла ошибка. Попробуйте еще раз.")
             return
 
-def handle_education_choice(call: CallbackQuery) -> None:
-    """Обрабатывает выбор места учебы"""
+def handle_class_choice(call: CallbackQuery) -> None:
+    """Обрабатывает выбор класса"""
     telegram_id = str(call.from_user.id)
     
     if telegram_id not in registration_states:
@@ -83,53 +77,31 @@ def handle_education_choice(call: CallbackQuery) -> None:
     
     state = registration_states[telegram_id]
     
-    if state['step'] != 'waiting_education_choice':
+    if state['step'] != 'waiting_class':
         return
     
-    education_type = call.data.replace('education_', '')
+    # Маппинг классов к тарифным планам и уровням
+    raw_value = call.data.replace('class_', '')
+    education_level = None
+    
+    if raw_value == '10_base':
+        class_number = '10'
+        education_level = 'base'
+    elif raw_value == '10_profile':
+        class_number = '10_profile'
+        education_level = 'profile'
+    elif raw_value == '11_base':
+        class_number = '11'
+        education_level = 'base'
+    elif raw_value == '11_profile':
+        class_number = '11_profile'
+        education_level = 'profile'
+    else:
+        class_number = raw_value
     
     try:
         user = User.objects.get(telegram_id=telegram_id)
-        user.education_type = education_type
-        user.save()
-        
-        # Переходим к выбору курса или класса
-        state['step'] = 'waiting_course_or_class'
-        
-        if education_type == 'university':
-            bot.edit_message_text(
-                chat_id=call.message.chat.id,
-                message_id=call.message.message_id,
-                text=REGISTRATION_UNIVERSITY_COURSE,
-                reply_markup=university_courses_markup
-            )
-        else:  # school
-            bot.edit_message_text(
-                chat_id=call.message.chat.id,
-                message_id=call.message.message_id,
-                text=REGISTRATION_SCHOOL_CLASS,
-                reply_markup=school_classes_markup
-            )
-    except Exception as e:
-        bot.answer_callback_query(call.id, "Произошла ошибка. Попробуйте еще раз.")
-
-def handle_course_or_class_choice(call: CallbackQuery) -> None:
-    """Обрабатывает выбор курса или класса"""
-    telegram_id = str(call.from_user.id)
-    
-    if telegram_id not in registration_states:
-        return
-    
-    state = registration_states[telegram_id]
-    
-    if state['step'] != 'waiting_course_or_class':
-        return
-    
-    course_or_class = call.data.replace('course_', '').replace('class_', '')
-    
-    try:
-        user = User.objects.get(telegram_id=telegram_id)
-        user.course_or_class = course_or_class
+        user.class_number = class_number
         user.is_registered = True
         user.save()
         
@@ -143,8 +115,8 @@ def handle_course_or_class_choice(call: CallbackQuery) -> None:
                 user=user,
                 profile_name=user.full_name or f"Профиль {user.telegram_id}",
                 full_name=user.full_name,
-                education_type=user.education_type,
-                course_or_class=user.course_or_class,
+                class_number=class_number,
+                education_level=education_level,
                 is_active=True,
                 is_registered=True
             )
@@ -153,7 +125,11 @@ def handle_course_or_class_choice(call: CallbackQuery) -> None:
         bot.edit_message_text(
             chat_id=call.message.chat.id,
             message_id=call.message.message_id,
-            text=REGISTRATION_COMPLETE
+            text=REGISTRATION_COMPLETE.format(
+                full_name=user.full_name,
+                class_number=user.class_number,
+                education_level=profile.get_education_level_display() or 'Не указан'
+            )
         )
         
         # Показываем главное меню
@@ -172,4 +148,4 @@ def start_registration_call(call: CallbackQuery) -> None:
 
 # Функция для проверки, находится ли пользователь в процессе регистрации
 def is_user_registering(telegram_id: str) -> bool:
-    return str(telegram_id) in registration_states 
+    return str(telegram_id) in registration_states

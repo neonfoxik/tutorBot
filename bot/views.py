@@ -28,7 +28,21 @@ from bot.handlers.admin.admin import (
     handle_admin_mark_payment
 )
 
+from bot.handlers.payments import (
+    start_payment,
+    payment_menu,
+    payment_method,
+    select_payment_method,
+    select_payment_month,
+    select_balance_payment_month,
+    check_payment,
+    payment_history,
+    notify_payment_success,
+    notify_admins_about_payment
+)
+
 from .models import PaymentHistory, User, StudentProfile
+
 
 # Регистрируем обработчики команд
 # Обработчик команды /start (должен быть первым!)
@@ -98,7 +112,7 @@ def payment_info(request):
     if request.method == 'POST':
         course = request.POST.get('course', '*')
         if course != "*":
-            all_profiles = all_profiles.filter(course_or_class=course)
+            all_profiles = all_profiles.filter(class_number=course)
 
     years = set(PaymentHistory.objects.values_list('year', flat=True))
     if len(years) == 0:
@@ -224,7 +238,6 @@ def start_polling(request: HttpRequest) -> JsonResponse:
 # Обработчик команды /start удален - используется тестовый обработчик выше
 
 bot.register_callback_query_handler(menu_call, func=lambda c: c.data == "main_menu")
-bot.register_callback_query_handler(profile, func=lambda c: c.data == "profile")
 
 # Обработчики для профилей
 bot.register_callback_query_handler(profiles_menu, func=lambda c: c.data == "profiles_menu")
@@ -275,23 +288,11 @@ def handle_profile_final_deletion(call):
     final_delete_profile(call)
 
 # Обработчики для создания профиля
-@bot.callback_query_handler(func=lambda call: call.data.startswith("profile_education_"))
-def handle_profile_education_selection(call):
-    """Обрабатывает выбор образования для профиля"""
-    from bot.handlers.profiles import handle_profile_education_choice
-    handle_profile_education_choice(call)
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith("profile_course_"))
-def handle_profile_course_selection(call):
-    """Обрабатывает выбор курса для профиля"""
-    from bot.handlers.profiles import handle_profile_course_or_class_choice
-    handle_profile_course_or_class_choice(call)
-
 @bot.callback_query_handler(func=lambda call: call.data.startswith("profile_class_"))
 def handle_profile_class_selection(call):
     """Обрабатывает выбор класса для профиля"""
-    from bot.handlers.profiles import handle_profile_course_or_class_choice
-    handle_profile_course_or_class_choice(call)
+    from bot.handlers.profiles import handle_profile_class_choice
+    handle_profile_class_choice(call)
 
 # Обработчики для регистрации и создания профилей
 @bot.message_handler(func=lambda message: not message.text.startswith('/'))
@@ -307,31 +308,18 @@ def handle_all_messages(message):
     elif is_user_registering(str(message.from_user.id)):
         handle_registration_message(message)
 
-# Обработчики для выбора места учебы
-@bot.callback_query_handler(func=lambda call: call.data.startswith("education_"))
-def handle_education_selection(call):
-    """Обрабатывает выбор места учебы"""
-    from bot.handlers.registration import handle_education_choice
-    handle_education_choice(call)
-
-# Обработчики для выбора курса
-@bot.callback_query_handler(func=lambda call: call.data.startswith("course_"))
-def handle_course_selection(call):
-    """Обрабатывает выбор курса"""
-    from bot.handlers.registration import handle_course_or_class_choice
-    handle_course_or_class_choice(call)
-
 # Обработчики для выбора класса
 @bot.callback_query_handler(func=lambda call: call.data.startswith("class_"))
 def handle_class_selection(call):
     """Обрабатывает выбор класса"""
-    from bot.handlers.registration import handle_course_or_class_choice
-    handle_course_or_class_choice(call)
+    from bot.handlers.registration import handle_class_choice
+    handle_class_choice(call)
 
 # Обработчики платежей
-payment_menu = bot.callback_query_handler(lambda c: c.data == "payment_menu")(payment_menu)
-start_payment = bot.callback_query_handler(lambda c: c.data == "start_payment")(start_payment)
-payment_history = bot.callback_query_handler(lambda c: c.data == "payment_history")(payment_history)
+bot.register_callback_query_handler(start_payment, func=lambda c: c.data == "start_payment")
+bot.register_callback_query_handler(payment_history, func=lambda c: c.data == "payment_history")
+bot.register_callback_query_handler(payment_method, func=lambda c: c.data == "payment_method")
+bot.register_callback_query_handler(payment_menu, func=lambda c: c.data == "payment_menu")
 
 # Обработчик для возврата в админ меню
 admin_menu_callback_handler = bot.callback_query_handler(lambda c: c.data == "admin_menu")(admin_menu_callback)
@@ -341,8 +329,6 @@ def handle_payment_month_selection(call):
     """Обрабатывает выбор месяца для оплаты"""
     from bot.handlers.payments import select_payment_month
     select_payment_month(call)
-
-# Обработчик confirm_payment удален - функция больше не используется
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("check_payment_"))
 def handle_payment_check(call):

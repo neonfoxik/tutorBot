@@ -428,7 +428,7 @@ def handle_admin_mark_payment(call: CallbackQuery):
         student = User.objects.get(telegram_id=student_id)
         
         # Получаем цену занятия для ученика
-        price_info = get_price_by_class(student.course_or_class)
+        price_info = get_price_by_class(student.class_number)
         
         if price_info:
             lesson_price = price_info['price']

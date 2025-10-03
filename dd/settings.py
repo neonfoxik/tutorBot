@@ -28,6 +28,9 @@ BOT_TOKEN = os.getenv('BOT_TOKEN')
 OWNER_ID = os.getenv('OWNER_ID')
 HOOK = os.getenv('HOOK')
 
+# Получаем имя бота из токена (до первого :)
+BOT_USERNAME = os.getenv('BOT_USERNAME') or (BOT_TOKEN.split(':')[0] if BOT_TOKEN else None)
+
 # ЮKassa настройки
 YOOKASSA_TEST_MODE = os.getenv('YOOKASSA_TEST_MODE', 'True').lower() == 'true'
 YOOKASSA_SHOP_ID = os.getenv('YOOKASSA_SHOP_ID')

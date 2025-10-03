@@ -1,90 +1,189 @@
-from decimal import Decimal
-from django.conf import settings
-from telebot.types import CallbackQuery, Message
+from telebot.types import CallbackQuery
+from django.db import transaction
 from bot import bot
-from bot.models import User, StudentProfile, Payment, PaymentHistory
+from bot.models import User, Payment, PaymentHistory
 from bot.keyboards import (
-    generate_payment_menu_keyboard,
     generate_payment_method_keyboard,
     generate_payment_months_keyboard,
     generate_balance_payment_months_keyboard,
-    generate_payment_confirmation_keyboard,
     generate_check_payment_keyboard,
-    UNIVERSAL_BUTTONS,
-    MONTH_NAMES
+    generate_payment_menu_keyboard
 )
 from bot.pricing import get_price_by_class
-from bot.yookassa_client import YooKassaClient
-from django.utils import timezone
+from bot.yookassa_client import create_payment as create_yookassa_payment
 
 
-def get_active_profile(user: User) -> StudentProfile:
-    """Получает активный профиль пользователя"""
+def payment_method(call: CallbackQuery) -> None:
+    """Показывает меню выбора способа оплаты"""
     try:
-        return user.student_profiles.get(is_active=True)
-    except StudentProfile.DoesNotExist:
-        return None
+        user = User.objects.get(telegram_id=str(call.from_user.id))
+        
+        # Получаем активный профиль
+        active_profile = user.student_profiles.filter(is_active=True).first()
+        if not active_profile:
+            bot.answer_callback_query(call.id, "❌ У вас нет активного профиля")
+            return
+            
+        # Получаем цену занятия для ученика с учетом уровня образования
+        class_key = active_profile.class_number
+        if active_profile.education_level:
+            if active_profile.class_number in ['10', '11']:
+                class_key = f"{active_profile.class_number}_{active_profile.education_level}"
+        
+        price_info = get_price_by_class(class_key)
+        
+        if not price_info:
+            bot.answer_callback_query(call.id, "❌ Не удалось определить тариф для вашего класса")
+            return
+            
+        lesson_price = price_info['price']
+        class_name = price_info['name']
+        description = price_info['description']
+        
+        markup = generate_payment_method_keyboard()
+        
+        text = f"💳 Оплата занятий\n\n"
+        text += f"👤 Профиль: {active_profile.profile_name}\n"
+        text += f"📚 Класс: {active_profile.class_number}\n"
+        text += f"📊 Уровень: {active_profile.get_education_level_display() or 'Не указан'}\n"
+        text += f"💰 Тариф: {class_name}\n"
+        text += f"ℹ️ {description}\n"
+        text += f"💵 Стоимость: {lesson_price} ₽\n"
+        text += f"💳 Баланс: {active_profile.balance} ₽\n\n"
+        text += f"Выберите способ оплаты:"
+        
+        try:
+            bot.edit_message_text(
+                chat_id=call.message.chat.id,
+                text=text,
+                reply_markup=markup,
+                message_id=call.message.message_id
+            )
+        except Exception as e:
+            print(f"Error editing message: {e}")
+            bot.answer_callback_query(call.id, "❌ Произошла ошибка")
+            
+    except User.DoesNotExist:
+        bot.answer_callback_query(call.id, "❌ Пользователь не найден")
 
 
 def payment_menu(call: CallbackQuery) -> None:
-    """Обработчик меню оплаты"""
-    markup = generate_payment_menu_keyboard()
-    text = "💰 Оплата занятий\n\n"
-    text += "Выберите действие:"
+    """Показывает меню оплаты"""
+    from bot.handlers.registration import start_registration
     
-    bot.edit_message_text(
-        chat_id=call.message.chat.id,
-        text=text,
-        reply_markup=markup,
-        message_id=call.message.message_id
-    )
+    telegram_id = str(call.from_user.id)
+    
+    try:
+        # Проверяем, есть ли пользователь в базе
+        user = User.objects.get(telegram_id=telegram_id)
+        
+        # Проверяем, есть ли у пользователя хотя бы один профиль
+        if not user.student_profiles.exists():
+            # Если нет профилей, отправляем на регистрацию
+            bot.answer_callback_query(call.id, "⚠️ Для оплаты необходимо пройти регистрацию")
+            start_registration(call.message)
+            return
+        
+        # Получаем активный профиль
+        active_profile = user.student_profiles.filter(is_active=True).first()
+        if not active_profile:
+            bot.answer_callback_query(call.id, "❌ У вас нет активного профиля")
+            return
+            
+        # Получаем цену занятия для ученика с учетом уровня образования
+        class_key = active_profile.class_number
+        if active_profile.education_level:
+            if active_profile.class_number in ['10', '11']:
+                class_key = f"{active_profile.class_number}_{active_profile.education_level}"
+        
+        price_info = get_price_by_class(class_key)
+        
+        if not price_info:
+            bot.answer_callback_query(call.id, "❌ Не удалось определить тариф для вашего класса")
+            return
+            
+        lesson_price = price_info['price']
+        class_name = price_info['name']
+        description = price_info['description']
+        
+        markup = generate_payment_menu_keyboard()
+        
+        text = f"💳 Меню оплаты\n\n"
+        text += f"👤 Профиль: {active_profile.profile_name}\n"
+        text += f"📚 Класс: {active_profile.class_number}\n"
+        text += f"📊 Уровень: {active_profile.get_education_level_display() or 'Не указан'}\n"
+        text += f"💰 Тариф: {class_name}\n"
+        text += f"ℹ️ {description}\n"
+        text += f"💵 Стоимость: {lesson_price} ₽\n"
+        text += f"💳 Баланс: {active_profile.balance} ₽\n\n"
+        text += f"Выберите действие:"
+        
+        try:
+            bot.edit_message_text(
+                chat_id=call.message.chat.id,
+                text=text,
+                reply_markup=markup,
+                message_id=call.message.message_id
+            )
+        except Exception as e:
+            print(f"Error editing message: {e}")
+            bot.answer_callback_query(call.id, "❌ Произошла ошибка")
+            
+    except User.DoesNotExist:
+        bot.answer_callback_query(call.id, "⚠️ Для оплаты необходимо пройти регистрацию")
+        start_registration(call.message)
 
 
 def start_payment(call: CallbackQuery) -> None:
     """Начинает процесс оплаты - показывает выбор способа оплаты"""
+    from bot.handlers.registration import start_registration
+    
+    telegram_id = str(call.from_user.id)
+    
     try:
-        user = User.objects.get(telegram_id=str(call.from_user.id))
+        # Проверяем, есть ли пользователь в базе
+        user = User.objects.get(telegram_id=telegram_id)
         
-        if not user.is_registered:
-            bot.answer_callback_query(call.id, "Сначала завершите регистрацию!")
+        # Проверяем, есть ли у пользователя хотя бы один профиль
+        if not user.student_profiles.exists():
+            # Если нет профилей, отправляем на регистрацию
+            bot.answer_callback_query(call.id, "⚠️ Для оплаты необходимо пройти регистрацию")
+            start_registration(call.message)
             return
         
         # Получаем активный профиль
-        active_profile = get_active_profile(user)
+        active_profile = user.student_profiles.filter(is_active=True).first()
         if not active_profile:
-            text = "❌ У вас нет активного профиля.\n"
-            text += "Создайте профиль в разделе 'Мои профили'."
-            bot.edit_message_text(
-                chat_id=call.message.chat.id,
-                text=text,
-                reply_markup=UNIVERSAL_BUTTONS,
-                message_id=call.message.message_id
-            )
+            bot.answer_callback_query(call.id, "❌ У вас нет активного профиля")
             return
+            
+        # Получаем цену занятия для ученика с учетом уровня образования
+        class_key = active_profile.class_number
+        if active_profile.education_level:
+            if active_profile.class_number in ['10', '11']:
+                class_key = f"{active_profile.class_number}_{active_profile.education_level}"
         
-        # Получаем цену для класса профиля
-        price_info = get_price_by_class(active_profile.course_or_class)
+        price_info = get_price_by_class(class_key)
         
         if not price_info:
-            text = "❌ Не удалось определить стоимость для вашего класса.\n"
-            text += "Обратитесь к администратору."
-            bot.edit_message_text(
-                chat_id=call.message.chat.id,
-                text=text,
-                reply_markup=UNIVERSAL_BUTTONS,
-                message_id=call.message.message_id
-            )
+            bot.answer_callback_query(call.id, "❌ Не удалось определить тариф для вашего класса")
             return
+            
+        lesson_price = price_info['price']
+        class_name = price_info['name']
+        description = price_info['description']
         
         markup = generate_payment_method_keyboard()
+        
         text = f"💳 Оплата занятий\n\n"
         text += f"👤 Профиль: {active_profile.profile_name}\n"
-        text += f"📚 Класс: {active_profile.course_or_class}\n"
-        text += f"💯 Тариф: {price_info['name']}\n"
-        text += f"💰 Стоимость: {price_info['price']} руб.\n"
-        text += f"💳 Баланс профиля: {active_profile.balance} ₽\n"
-        text += f"📝 {price_info['description']}\n\n"
-        text += "Выберите способ оплаты:"
+        text += f"📚 Класс: {active_profile.class_number}\n"
+        text += f"📊 Уровень: {active_profile.get_education_level_display() or 'Не указан'}\n"
+        text += f"💰 Тариф: {class_name}\n"
+        text += f"ℹ️ {description}\n"
+        text += f"💵 Стоимость: {lesson_price} ₽\n"
+        text += f"💳 Баланс: {active_profile.balance} ₽\n\n"
+        text += f"Выберите способ оплаты:"
         
         bot.edit_message_text(
             chat_id=call.message.chat.id,
@@ -92,50 +191,61 @@ def start_payment(call: CallbackQuery) -> None:
             reply_markup=markup,
             message_id=call.message.message_id
         )
-    
     except User.DoesNotExist:
-        bot.answer_callback_query(call.id, "Пользователь не найден")
+        bot.answer_callback_query(call.id, "⚠️ Для оплаты необходимо пройти регистрацию")
+        start_registration(call.message)
 
 
 def select_payment_method(call: CallbackQuery) -> None:
-    """Обработчик выбора способа оплаты"""
+    """Обрабатывает выбор способа оплаты"""
     try:
         user = User.objects.get(telegram_id=str(call.from_user.id))
         
         # Получаем активный профиль
-        active_profile = get_active_profile(user)
+        active_profile = user.student_profiles.filter(is_active=True).first()
         if not active_profile:
-            bot.answer_callback_query(call.id, "У вас нет активного профиля")
+            bot.answer_callback_query(call.id, "❌ У вас нет активного профиля")
             return
+            
+        # Получаем цену занятия для ученика с учетом уровня образования
+        class_key = active_profile.class_number
+        if active_profile.education_level:
+            if active_profile.class_number in ['10', '11']:
+                class_key = f"{active_profile.class_number}_{active_profile.education_level}"
         
-        # Получаем цену для класса профиля
-        price_info = get_price_by_class(active_profile.course_or_class)
+        price_info = get_price_by_class(class_key)
         
         if not price_info:
-            bot.answer_callback_query(call.id, "Ошибка определения цены")
+            bot.answer_callback_query(call.id, "❌ Не удалось определить тариф для вашего класса")
             return
+            
+        lesson_price = price_info['price']
+        class_name = price_info['name']
+        description = price_info['description']
         
         if call.data == "pay_with_yookassa":
-            # Оплата через ЮKassa - показываем месяцы
             markup = generate_payment_months_keyboard()
-            text = f"💳 Оплата через ЮKassa\n\n"
+            text = f"📅 Выберите месяц для оплаты\n\n"
             text += f"👤 Профиль: {active_profile.profile_name}\n"
-            text += f"📚 Класс: {active_profile.course_or_class}\n"
-            text += f"💰 Стоимость: {price_info['price']} руб.\n\n"
-            text += "Выберите месяц для оплаты:"
+            text += f"📚 Класс: {active_profile.class_number}\n"
+            text += f"📊 Уровень: {active_profile.get_education_level_display() or 'Не указан'}\n"
+            text += f"💰 Тариф: {class_name}\n"
+            text += f"ℹ️ {description}\n"
+            text += f"💵 Стоимость: {lesson_price} ₽"
+        else:  # pay_with_balance
+            if active_profile.balance <= 0:
+                bot.answer_callback_query(call.id, "❌ На балансе недостаточно средств")
+                return
             
-        elif call.data == "pay_with_balance":
-            # Оплата с баланса - показываем месяцы
             markup = generate_balance_payment_months_keyboard()
-            text = f"💰 Оплата с баланса\n\n"
+            text = f"📅 Выберите месяц для оплаты с баланса\n\n"
             text += f"👤 Профиль: {active_profile.profile_name}\n"
-            text += f"📚 Класс: {active_profile.course_or_class}\n"
-            text += f"💰 Стоимость: {price_info['price']} руб.\n"
-            text += f"💳 Баланс профиля: {active_profile.balance} ₽\n\n"
-            text += "Выберите месяц для оплаты:"
-            
-        else:
-            return
+            text += f"📚 Класс: {active_profile.class_number}\n"
+            text += f"📊 Уровень: {active_profile.get_education_level_display() or 'Не указан'}\n"
+            text += f"💰 Тариф: {class_name}\n"
+            text += f"ℹ️ {description}\n"
+            text += f"💵 Стоимость: {lesson_price} ₽\n"
+            text += f"💳 Баланс: {active_profile.balance} ₽"
         
         bot.edit_message_text(
             chat_id=call.message.chat.id,
@@ -143,113 +253,113 @@ def select_payment_method(call: CallbackQuery) -> None:
             reply_markup=markup,
             message_id=call.message.message_id
         )
-    
     except User.DoesNotExist:
-        bot.answer_callback_query(call.id, "Пользователь не найден")
+        bot.answer_callback_query(call.id, "❌ Пользователь не найден")
 
 
 def select_payment_month(call: CallbackQuery) -> None:
-    """Обработчик выбора месяца для оплаты - сразу создает платеж и показывает ссылку"""
+    """Обрабатывает выбор месяца для оплаты через ЮKassa"""
     try:
-        # Парсим callback_data: pay_month_{month}_{year}
-        parts = call.data.split('_')
-        if len(parts) != 4:
-            bot.answer_callback_query(call.id, "Ошибка в данных")
-            return
-        
-        month = int(parts[2])
-        year = int(parts[3])
+        # Получаем месяц и год из callback_data
+        month = int(call.data.split('_')[2])
+        year = int(call.data.split('_')[3])
         
         user = User.objects.get(telegram_id=str(call.from_user.id))
         
         # Получаем активный профиль
-        active_profile = get_active_profile(user)
+        active_profile = user.student_profiles.filter(is_active=True).first()
         if not active_profile:
-            bot.answer_callback_query(call.id, "У вас нет активного профиля")
+            bot.answer_callback_query(call.id, "❌ У вас нет активного профиля")
             return
         
-        # Проверяем, не оплачен ли уже этот месяц для профиля
+        # Проверяем, не оплачен ли уже этот месяц
         if PaymentHistory.is_month_paid(user, month, year, active_profile):
-            bot.answer_callback_query(call.id, f"Месяц {MONTH_NAMES[month]} {year} уже оплачен!")
+            bot.answer_callback_query(call.id, "❌ Этот месяц уже оплачен")
             return
         
-        # Получаем информацию о цене
-        price_info = get_price_by_class(active_profile.course_or_class)
+        # Получаем цену занятия для ученика с учетом уровня образования
+        class_key = active_profile.class_number
+        if active_profile.education_level:
+            if active_profile.class_number in ['10', '11']:
+                class_key = f"{active_profile.class_number}_{active_profile.education_level}"
+        
+        price_info = get_price_by_class(class_key)
         
         if not price_info:
-            bot.answer_callback_query(call.id, "Ошибка определения цены")
+            bot.answer_callback_query(call.id, "❌ Не удалось определить тариф для вашего класса")
             return
-        
-        # Создаем платеж через ЮKassa
-        yookassa_client = YooKassaClient()
-        
-        amount = Decimal(str(price_info['price']))
-        description = f"Оплата занятий за {MONTH_NAMES[month]} {year} - {price_info['name']} - {active_profile.profile_name}"
-        
-        metadata = {
-            "user_id": user.telegram_id,
-            "profile_id": active_profile.id,
-            "month": month,
-            "year": year,
-            "pricing_plan": price_info['key']
-        }
-        
-        print(f"Создаем платеж для пользователя {user.telegram_id}, профиль {active_profile.id}")
-        print(f"Сумма: {amount}, Описание: {description}")
-        print(f"Метаданные: {metadata}")
-        
-        yookassa_response = yookassa_client.create_payment(
-            amount=amount,
-            description=description,
-            metadata=metadata
-        )
-        
-        print(f"Ответ от ЮKassa: {yookassa_response}")
-        
-        if not yookassa_response:
-            text = "❌ Ошибка при создании платежа.\n\n"
-            text += "Возможные причины:\n"
-            text += "• Неправильные настройки ЮKassa\n"
-            text += "• Проблемы с интернет-соединением\n"
-            text += "• Ошибка на стороне ЮKassa\n\n"
-            text += "Попробуйте позже или обратитесь к администратору."
             
-            bot.edit_message_text(
-                chat_id=call.message.chat.id,
-                text=text,
-                reply_markup=UNIVERSAL_BUTTONS,
-                message_id=call.message.message_id
+        lesson_price = price_info['price']
+        class_name = price_info['name']
+        description = price_info['description']
+        
+        # Создаем платеж в ЮKassa
+        try:
+            # Добавляем метаданные для платежа
+            metadata = {
+                'user_id': user.telegram_id,
+                'profile_id': active_profile.id,
+                'month': month,
+                'year': year
+            }
+            
+            # Создаем платеж
+            payment_data = create_yookassa_payment(
+                amount=lesson_price,
+                description=f"Оплата занятий за {month:02d}.{year}",
+                metadata=metadata
             )
+            
+            print(f"Payment data from YooKassa: {payment_data}")
+            
+            if not payment_data:
+                bot.answer_callback_query(call.id, "❌ Ошибка создания платежа: нет ответа от ЮKassa")
+                return
+                
+            if 'id' not in payment_data:
+                bot.answer_callback_query(call.id, "❌ Ошибка создания платежа: нет ID платежа")
+                return
+                
+            if 'confirmation' not in payment_data:
+                bot.answer_callback_query(call.id, "❌ Ошибка создания платежа: нет данных для подтверждения")
+                return
+                
+            if 'confirmation_url' not in payment_data['confirmation']:
+                bot.answer_callback_query(call.id, "❌ Ошибка создания платежа: нет URL для оплаты")
+                return
+        except Exception as e:
+            print(f"Error creating YooKassa payment: {e}")
+            bot.answer_callback_query(call.id, "❌ Ошибка при создании платежа")
             return
         
-        # Сохраняем платеж в базу данных
+        # Создаем запись о платеже
         payment = Payment.objects.create(
             user=user,
             student_profile=active_profile,
-            yookassa_payment_id=yookassa_response['id'],
-            amount=amount,
-            status=yookassa_response['status'],
-            description=description,
+            yookassa_payment_id=payment_data['id'],
+            amount=lesson_price,
+            status='pending',
+            description=f"Оплата занятий за {month:02d}.{year}",
             payment_month=month,
             payment_year=year,
-            pricing_plan=price_info['key']
+            pricing_plan=class_name
         )
         
-        # Получаем ссылку для оплаты (confirmation_url)
-        payment_url = yookassa_response.get('confirmation', {}).get('confirmation_url')
+        # Получаем URL для оплаты
+        confirmation_url = payment_data['confirmation']['confirmation_url']
         
-        # Создаем клавиатуру с реальной ссылкой на оплату и кнопкой проверки
-        markup = generate_check_payment_keyboard(payment_url, payment.yookassa_payment_id, month, year)
+        # Показываем кнопку для перехода к оплате
+        markup = generate_check_payment_keyboard(confirmation_url, payment_data['id'], month, year)
         
-        text = f"✅ Платеж создан!\n\n"
+        text = f"💳 Оплата занятий\n\n"
         text += f"👤 Профиль: {active_profile.profile_name}\n"
-        text += f"📚 Класс: {active_profile.course_or_class}\n"
-        text += f"💯 Тариф: {price_info['name']}\n"
-        text += f"📅 Месяц: {MONTH_NAMES[month]} {year}\n"
-        text += f"💰 Сумма: {amount} руб.\n\n"
-        text += "1️⃣ Перейдите по ссылке и оплатите\n"
-        text += "2️⃣ После оплаты нажмите 'Проверить оплату'\n"
-        text += "3️⃣ Получите подтверждение"
+        text += f"📚 Класс: {active_profile.class_number}\n"
+        text += f"📊 Уровень: {active_profile.get_education_level_display() or 'Не указан'}\n"
+        text += f"💰 Тариф: {class_name}\n"
+        text += f"ℹ️ {description}\n"
+        text += f"📅 Период: {month:02d}.{year}\n"
+        text += f"💵 Сумма: {lesson_price} ₽\n\n"
+        text += f"Для оплаты нажмите кнопку 'Перейти к оплате'"
         
         bot.edit_message_text(
             chat_id=call.message.chat.id,
@@ -257,274 +367,289 @@ def select_payment_month(call: CallbackQuery) -> None:
             reply_markup=markup,
             message_id=call.message.message_id
         )
-    
-    except (ValueError, User.DoesNotExist) as e:
-        bot.answer_callback_query(call.id, "Ошибка обработки")
+    except User.DoesNotExist:
+        bot.answer_callback_query(call.id, "❌ Пользователь не найден")
+    except Exception as e:
+        bot.answer_callback_query(call.id, "❌ Произошла ошибка")
 
 
 def select_balance_payment_month(call: CallbackQuery) -> None:
-    """Обработчик выбора месяца для оплаты с баланса"""
+    """Обрабатывает выбор месяца для оплаты с баланса"""
     try:
-        # Парсим callback_data: pay_balance_month_{month}_{year}
-        parts = call.data.split('_')
-        if len(parts) != 5:
-            bot.answer_callback_query(call.id, "Ошибка в данных")
-            return
-        
-        month = int(parts[3])
-        year = int(parts[4])
+        # Получаем месяц и год из callback_data
+        month = int(call.data.split('_')[3])
+        year = int(call.data.split('_')[4])
         
         user = User.objects.get(telegram_id=str(call.from_user.id))
         
         # Получаем активный профиль
-        active_profile = get_active_profile(user)
+        active_profile = user.student_profiles.filter(is_active=True).first()
         if not active_profile:
-            bot.answer_callback_query(call.id, "У вас нет активного профиля")
+            bot.answer_callback_query(call.id, "❌ У вас нет активного профиля")
             return
         
-        # Проверяем, не оплачен ли уже этот месяц для профиля
+        # Проверяем, не оплачен ли уже этот месяц
         if PaymentHistory.is_month_paid(user, month, year, active_profile):
-            bot.answer_callback_query(call.id, f"Месяц {MONTH_NAMES[month]} {year} уже оплачен!")
+            bot.answer_callback_query(call.id, "❌ Этот месяц уже оплачен")
             return
         
-        # Получаем информацию о цене
-        price_info = get_price_by_class(active_profile.course_or_class)
+        # Получаем цену занятия для ученика с учетом уровня образования
+        class_key = active_profile.class_number
+        if active_profile.education_level:
+            if active_profile.class_number in ['10', '11']:
+                class_key = f"{active_profile.class_number}_{active_profile.education_level}"
+        
+        price_info = get_price_by_class(class_key)
         
         if not price_info:
-            bot.answer_callback_query(call.id, "Ошибка определения цены")
+            bot.answer_callback_query(call.id, "❌ Не удалось определить тариф для вашего класса")
+            return
+            
+        lesson_price = price_info['price']
+        class_name = price_info['name']
+        description = price_info['description']
+        
+        # Проверяем достаточно ли средств на балансе
+        if active_profile.balance < lesson_price:
+            bot.answer_callback_query(call.id, "❌ На балансе недостаточно средств")
             return
         
-        amount = Decimal(str(price_info['price']))
+        with transaction.atomic():
+            # Списываем средства с баланса
+            active_profile.balance -= lesson_price
+            active_profile.save()
+            
+            # Создаем запись в истории платежей
+            PaymentHistory.objects.create(
+                user=user,
+                student_profile=active_profile,
+                month=month,
+                year=year,
+                amount_paid=lesson_price,
+                pricing_plan=class_name,
+                payment_type='balance',
+                status='completed'
+            )
         
-        # Проверяем, достаточно ли средств на балансе профиля
-        if active_profile.balance < amount:
-            bot.answer_callback_query(call.id, f"Недостаточно средств на балансе!\nТребуется: {amount} ₽\nДоступно: {active_profile.balance} ₽")
-            return
-        
-        # Списываем деньги с баланса профиля
-        active_profile.balance -= amount
-        active_profile.save()
-        
-        # Создаем запись в истории оплат
-        PaymentHistory.objects.create(
-            user=user,
-            student_profile=active_profile,
-            payment=None,  # Нет платежа через ЮKassa
-            month=month,
-            year=year,
-            amount_paid=amount,
-            pricing_plan=price_info['key'],
-            payment_type='balance',
-            status='completed'
-        )
-        
-        # Уведомляем пользователя об успешной оплате
-        notify_payment_success(user.telegram_id, month, year, amount, active_profile)
-        
-        # Уведомляем всех администраторов
-        notify_admins_about_payment(user, month, year, amount, active_profile)
-        
-        # Обновляем сообщение
-        text = f"🎉 Оплата с баланса прошла успешно!\n\n"
+        text = f"✅ Оплата успешно выполнена!\n\n"
         text += f"👤 Профиль: {active_profile.profile_name}\n"
-        text += f"📚 Класс: {active_profile.course_or_class}\n"
-        text += f"💯 Тариф: {price_info['name']}\n"
-        text += f"📅 Месяц: {MONTH_NAMES[month]} {year}\n"
-        text += f"💰 Сумма: {amount} ₽\n"
-        text += f"💳 Остаток на балансе: {active_profile.balance} ₽\n\n"
-        text += f"✅ Теперь вы можете посещать занятия в этом месяце!"
+        text += f"📚 Класс: {active_profile.class_number}\n"
+        text += f"📊 Уровень: {active_profile.get_education_level_display() or 'Не указан'}\n"
+        text += f"💰 Тариф: {class_name}\n"
+        text += f"ℹ️ {description}\n"
+        text += f"📅 Период: {month:02d}.{year}\n"
+        text += f"💵 Списано: {lesson_price} ₽\n"
+        text += f"💳 Остаток на балансе: {active_profile.balance} ₽"
+        
+        markup = generate_payment_menu_keyboard()
         
         bot.edit_message_text(
             chat_id=call.message.chat.id,
             text=text,
-            reply_markup=generate_payment_menu_keyboard(),
+            reply_markup=markup,
             message_id=call.message.message_id
         )
-    
-    except (ValueError, User.DoesNotExist) as e:
-        bot.answer_callback_query(call.id, "Ошибка обработки")
+        
+        # Уведомляем админов об оплате
+        notify_admins_about_payment(user, active_profile, month, year, lesson_price, 'balance')
+        
+    except User.DoesNotExist:
+        bot.answer_callback_query(call.id, "❌ Пользователь не найден")
+    except Exception as e:
+        bot.answer_callback_query(call.id, "❌ Произошла ошибка")
 
 
 def check_payment(call: CallbackQuery) -> None:
-    """Проверяет статус оплаты и обрабатывает успешные платежи"""
+    """Проверяет статус платежа"""
     try:
-        # Парсим callback_data: check_payment_{payment_id}_{month}_{year}
-        parts = call.data.split('_')
-        if len(parts) != 5:
-            bot.answer_callback_query(call.id, "Ошибка в данных")
-            return
+        # Получаем данные из callback_data
+        payment_id = call.data.split('_')[2]
+        month = int(call.data.split('_')[3])
+        year = int(call.data.split('_')[4])
         
-        payment_id = parts[2]
-        month = int(parts[3])
-        year = int(parts[4])
+        payment = Payment.objects.get(yookassa_payment_id=payment_id)
         
-        user = User.objects.get(telegram_id=str(call.from_user.id))
-        
-        # Получаем активный профиль
-        active_profile = get_active_profile(user)
-        if not active_profile:
-            bot.answer_callback_query(call.id, "У вас нет активного профиля")
-            return
-        
-        # Проверяем, не оплачен ли уже этот месяц для профиля
-        if PaymentHistory.is_month_paid(user, month, year, active_profile):
-            bot.answer_callback_query(call.id, f"Месяц {MONTH_NAMES[month]} {year} уже оплачен!")
-            return
-        
-        # Получаем информацию о платеже из ЮKassa
-        yookassa_client = YooKassaClient()
-        payment_info = yookassa_client.get_payment(payment_id)
-        
-        if not payment_info:
-            bot.answer_callback_query(call.id, "Ошибка получения информации о платеже")
-            return
-        
-        payment_status = payment_info.get('status')
-        
-        if payment_status == 'succeeded':
-            # Платеж успешен - обновляем базу данных
-            try:
-                payment = Payment.objects.get(yookassa_payment_id=payment_id)
-                payment.status = 'succeeded'
-                payment.payment_method = payment_info.get('payment_method', {})
-                payment.save()
-                
-                # Создаем запись в истории оплат
-                PaymentHistory.objects.create(
-                    user=user,
-                    student_profile=active_profile,
-                    payment=payment,
-                    month=month,
-                    year=year,
-                    amount_paid=payment.amount,
-                    pricing_plan=payment.pricing_plan
-                )
-                
-                # Уведомляем пользователя об успешной оплате
-                notify_payment_success(user.telegram_id, month, year, payment.amount, active_profile)
-                
-                # Уведомляем всех администраторов
-                notify_admins_about_payment(user, month, year, payment.amount, active_profile)
-                
-                # Обновляем сообщение
-                text = f"🎉 Оплата подтверждена!\n\n"
-                text += f"👤 Профиль: {active_profile.profile_name}\n"
-                text += f"💰 Сумма: {payment.amount} руб.\n"
-                text += f"📅 Месяц: {MONTH_NAMES[month]} {year}\n"
-                text += f"✅ Теперь вы можете посещать занятия в этом месяце!"
-                
-                bot.edit_message_text(
-                    chat_id=call.message.chat.id,
-                    text=text,
-                    reply_markup=generate_payment_menu_keyboard(),
-                    message_id=call.message.message_id
-                )
-                
-            except Payment.DoesNotExist:
-                bot.answer_callback_query(call.id, "Платеж не найден в базе данных")
-                return
-                
-        elif payment_status == 'pending':
-            bot.answer_callback_query(call.id, "Платеж еще не завершен. Попробуйте позже.")
-        elif payment_status == 'canceled':
-            bot.answer_callback_query(call.id, "Платеж отменен.")
-        else:
-            bot.answer_callback_query(call.id, f"Статус платежа: {payment_status}")
-    
-    except (ValueError, User.DoesNotExist) as e:
-        bot.answer_callback_query(call.id, "Ошибка обработки")
-
-
-def payment_history(call: CallbackQuery) -> None:
-    """Показывает историю платежей пользователя"""
-    try:
-        user = User.objects.get(telegram_id=str(call.from_user.id))
-        
-        # Получаем активный профиль
-        active_profile = get_active_profile(user)
-        if not active_profile:
-            text = "❌ У вас нет активного профиля.\n"
-            text += "Создайте профиль в разделе 'Мои профили'."
+        if payment.status == 'succeeded':
+            # Платеж уже проведен
+            text = f"✅ Оплата успешно выполнена!\n\n"
+            text += f"👤 Профиль: {payment.student_profile.profile_name}\n"
+            text += f"📚 Класс: {payment.student_profile.class_number}\n"
+            text += f"📊 Уровень: {payment.student_profile.get_education_level_display() or 'Не указан'}\n"
+            text += f"📅 Период: {month:02d}.{year}\n"
+            text += f"💵 Сумма: {payment.amount} ₽"
+            
+            markup = generate_payment_menu_keyboard()
+            
             bot.edit_message_text(
                 chat_id=call.message.chat.id,
                 text=text,
-                reply_markup=UNIVERSAL_BUTTONS,
+                reply_markup=markup,
                 message_id=call.message.message_id
             )
+        else:
+            bot.answer_callback_query(call.id, "❌ Платеж еще не проведен")
+    except Payment.DoesNotExist:
+        bot.answer_callback_query(call.id, "❌ Платеж не найден")
+    except Exception as e:
+        bot.answer_callback_query(call.id, "❌ Произошла ошибка")
+
+
+def payment_history(call: CallbackQuery) -> None:
+    """Показывает историю платежей"""
+    from bot.handlers.registration import start_registration
+    
+    telegram_id = str(call.from_user.id)
+    
+    try:
+        # Проверяем, есть ли пользователь в базе
+        user = User.objects.get(telegram_id=telegram_id)
+        
+        # Проверяем, есть ли у пользователя хотя бы один профиль
+        if not user.student_profiles.exists():
+            # Если нет профилей, отправляем на регистрацию
+            bot.answer_callback_query(call.id, "⚠️ Для просмотра истории необходимо пройти регистрацию")
+            start_registration(call.message)
             return
         
-        # Получаем историю оплаченных месяцев для профиля
-        history = PaymentHistory.objects.filter(
-            user=user, 
-            student_profile=active_profile
+        # Получаем активный профиль
+        active_profile = user.student_profiles.filter(is_active=True).first()
+        if not active_profile:
+            bot.answer_callback_query(call.id, "❌ У вас нет активного профиля")
+            return
+            
+        # Получаем цену занятия для ученика с учетом уровня образования
+        class_key = active_profile.class_number
+        if active_profile.education_level:
+            if active_profile.class_number in ['10', '11']:
+                class_key = f"{active_profile.class_number}_{active_profile.education_level}"
+        
+        price_info = get_price_by_class(class_key)
+        
+        if not price_info:
+            bot.answer_callback_query(call.id, "❌ Не удалось определить тариф для вашего класса")
+            return
+            
+        class_name = price_info['name']
+        description = price_info['description']
+        
+        # Получаем историю платежей
+        payments = PaymentHistory.objects.filter(
+            user=user,
+            student_profile=active_profile,
+            status='completed'
         ).order_by('-year', '-month')
         
-        text = f"📊 История оплат\n\n"
-        text += f"👤 Профиль: {active_profile.profile_name}\n\n"
+        text = f"📊 История платежей\n\n"
+        text += f"👤 Профиль: {active_profile.profile_name}\n"
+        text += f"📚 Класс: {active_profile.class_number}\n"
+        text += f"📊 Уровень: {active_profile.get_education_level_display() or 'Не указан'}\n"
+        text += f"💰 Тариф: {class_name}\n"
+        text += f"ℹ️ {description}\n"
+        text += f"💳 Баланс: {active_profile.balance} ₽\n\n"
         
-        if history.exists():
-            for record in history:
-                month_name = MONTH_NAMES[record.month]
-                text += f"✅ {month_name} {record.year} - {record.amount_paid} руб.\n"
-                text += f"   📅 Оплачено: {record.paid_at.strftime('%d.%m.%Y %H:%M')}\n\n"
+        if not payments.exists():
+            text += f"У вас пока нет оплаченных месяцев."
         else:
-            text += "Платежей пока нет."
+            text += f"Оплаченные месяцы:\n"
+            for payment in payments:
+                text += f"• {payment.month:02d}.{payment.year} - {payment.amount_paid} ₽\n"
+        
+        markup = generate_payment_menu_keyboard()
         
         bot.edit_message_text(
             chat_id=call.message.chat.id,
             text=text,
-            reply_markup=UNIVERSAL_BUTTONS,
+            reply_markup=markup,
             message_id=call.message.message_id
         )
-    
     except User.DoesNotExist:
-        bot.answer_callback_query(call.id, "Пользователь не найден")
+        bot.answer_callback_query(call.id, "⚠️ Для просмотра истории необходимо пройти регистрацию")
+        start_registration(call.message)
 
 
-def notify_payment_success(user_telegram_id: str, month: int, year: int, amount: Decimal, profile: StudentProfile):
+def notify_payment_success(payment_id: str) -> None:
     """Уведомляет пользователя об успешной оплате"""
     try:
-        text = f"🎉 Оплата прошла успешно!\n\n"
-        text += f"👤 Профиль: {profile.profile_name}\n"
-        text += f"💰 Сумма: {amount} руб.\n"
-        text += f"📅 Оплачен месяц: {MONTH_NAMES[month]} {year}\n"
-        text += f"✅ Теперь вы можете посещать занятия в этом месяце!"
+        payment = Payment.objects.get(yookassa_payment_id=payment_id)
+        
+        # Создаем запись в истории платежей
+        PaymentHistory.objects.create(
+            user=payment.user,
+            student_profile=payment.student_profile,
+            payment=payment,
+            month=payment.payment_month,
+            year=payment.payment_year,
+            amount_paid=payment.amount,
+            pricing_plan=payment.pricing_plan,
+            payment_type='card',
+            status='completed'
+        )
+        
+        # Получаем цену занятия для ученика
+        price_info = get_price_by_class(payment.student_profile.class_number)
+        
+        if price_info:
+            class_name = price_info['name']
+            description = price_info['description']
+        else:
+            class_name = payment.pricing_plan
+            description = ""
+        
+        # Отправляем уведомление пользователю
+        text = f"✅ Оплата успешно выполнена!\n\n"
+        text += f"👤 Профиль: {payment.student_profile.profile_name}\n"
+        text += f"📚 Класс: {payment.student_profile.class_number}\n"
+        text += f"📊 Уровень: {payment.student_profile.get_education_level_display() or 'Не указан'}\n"
+        text += f"💰 Тариф: {class_name}\n"
+        text += f"ℹ️ {description}\n"
+        text += f"📅 Период: {payment.payment_month:02d}.{payment.payment_year}\n"
+        text += f"💵 Сумма: {payment.amount} ₽"
         
         bot.send_message(
-            chat_id=user_telegram_id,
-            text=text,
-            reply_markup=generate_payment_menu_keyboard()
+            chat_id=payment.user.telegram_id,
+            text=text
         )
-    except Exception as e:
-        print(f"Ошибка при отправке уведомления: {e}")
+        
+        # Уведомляем админов
+        notify_admins_about_payment(
+            payment.user,
+            payment.student_profile,
+            payment.payment_month,
+            payment.payment_year,
+            payment.amount,
+            'card'
+        )
+        
+    except Payment.DoesNotExist:
+        pass
 
 
-def notify_admins_about_payment(user: User, month: int, year: int, amount: Decimal, profile: StudentProfile):
-    """Уведомляет всех администраторов о новой оплате"""
-    try:
-        # Получаем всех администраторов
-        admins = User.objects.filter(is_admin=True)
-        
-        if not admins.exists():
-            return
-        
-        text = f"💰 Новая оплата!\n\n"
-        text += f"👤 Ученик: {profile.profile_name}\n"
-        text += f"🆔 Telegram ID: {user.telegram_id}\n"
-        text += f"📚 Класс: {profile.course_or_class}\n"
-        text += f"📅 Месяц: {MONTH_NAMES[month]} {year}\n"
-        text += f"💰 Сумма: {amount} руб.\n"
-        text += f"⏰ Время: {timezone.now().strftime('%d.%m.%Y %H:%M')}"
-        
-        # Отправляем уведомление каждому администратору
-        for admin in admins:
-            try:
-                bot.send_message(
-                    chat_id=admin.telegram_id,
-                    text=text
-                )
-            except Exception as e:
-                print(f"Ошибка отправки уведомления администратору {admin.telegram_id}: {e}")
-                
-    except Exception as e:
-        print(f"Ошибка при уведомлении администраторов: {e}")
+def notify_admins_about_payment(user: User, profile: 'StudentProfile', month: int, year: int, amount: float, payment_type: str) -> None:
+    """Уведомляет админов об оплате"""
+    admins = User.objects.filter(is_admin=True)
+    
+    # Получаем цену занятия для ученика
+    price_info = get_price_by_class(profile.class_number)
+    
+    if price_info:
+        class_name = price_info['name']
+        description = price_info['description']
+    else:
+        class_name = "Тариф не определен"
+        description = ""
+    
+    text = f"💰 Новая оплата!\n\n"
+    text += f"👤 Ученик: {profile.full_name}\n"
+    text += f"📚 Класс: {profile.class_number}\n"
+    text += f"📊 Уровень: {profile.get_education_level_display() or 'Не указан'}\n"
+    text += f"💰 Тариф: {class_name}\n"
+    text += f"ℹ️ {description}\n"
+    text += f"📅 Период: {month:02d}.{year}\n"
+    text += f"💳 Способ: {'Банковская карта' if payment_type == 'card' else 'С баланса'}\n"
+    text += f"💵 Сумма: {amount} ₽"
+    
+    for admin in admins:
+        try:
+            bot.send_message(admin.telegram_id, text)
+        except Exception:
+            continue

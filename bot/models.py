@@ -4,11 +4,6 @@ from datetime import datetime, timedelta
 
 
 class User(models.Model):
-    EDUCATION_CHOICES = [
-        ('school', 'Школа'),
-        ('university', 'ВУЗ'),
-    ]
-    
     telegram_id = models.CharField(
         primary_key=True,
         max_length=50
@@ -19,16 +14,9 @@ class User(models.Model):
         null=True,
         blank=True
     )
-    education_type = models.CharField(
-        max_length=20,
-        choices=EDUCATION_CHOICES,
-        verbose_name="Тип образования",
-        null=True,
-        blank=True
-    )
-    course_or_class = models.CharField(
+    class_number = models.CharField(
         max_length=10,
-        verbose_name="Курс или класс",
+        verbose_name="Класс",
         null=True,
         blank=True
     )
@@ -279,9 +267,9 @@ class AdminState(models.Model):
 class StudentProfile(models.Model):
     """Модель для профилей учеников под одним Telegram аккаунтом"""
     
-    EDUCATION_CHOICES = [
-        ('school', 'Школа'),
-        ('university', 'ВУЗ'),
+    EDUCATION_LEVEL_CHOICES = [
+        ('base', 'База'),
+        ('profile', 'Профиль'),
     ]
     
     user = models.ForeignKey(
@@ -301,16 +289,16 @@ class StudentProfile(models.Model):
         null=True,
         blank=True
     )
-    education_type = models.CharField(
-        max_length=20,
-        choices=EDUCATION_CHOICES,
-        verbose_name="Тип образования",
+    class_number = models.CharField(
+        max_length=10,
+        verbose_name="Класс",
         null=True,
         blank=True
     )
-    course_or_class = models.CharField(
-        max_length=10,
-        verbose_name="Курс или класс",
+    education_level = models.CharField(
+        max_length=20,
+        choices=EDUCATION_LEVEL_CHOICES,
+        verbose_name="Уровень (база/профиль)",
         null=True,
         blank=True
     )
@@ -345,10 +333,9 @@ class StudentProfile(models.Model):
     def __str__(self):
         return f"{self.profile_name} ({self.user.telegram_id})"
     
-    def get_education_type_display(self):
-        """Возвращает отображаемое название типа образования"""
-        for choice in self.EDUCATION_CHOICES:
-            if choice[0] == self.education_type:
+    def get_education_level_display(self):
+        """Возвращает отображаемое название уровня образования"""
+        for choice in self.EDUCATION_LEVEL_CHOICES:
+            if choice[0] == self.education_level:
                 return choice[1]
-        return self.education_type
-   
+        return self.education_level

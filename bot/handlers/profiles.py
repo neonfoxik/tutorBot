@@ -7,8 +7,6 @@ from bot.keyboards import (
     generate_profiles_list_keyboard,
     generate_profile_management_keyboard,
     generate_profile_data_management_keyboard,
-    generate_profile_creation_keyboard,
-    generate_profile_university_courses_keyboard,
     generate_profile_school_classes_keyboard,
     generate_profile_confirmation_keyboard,
     generate_profile_deletion_confirmation_keyboard,
@@ -21,9 +19,7 @@ from bot.texts import (
     PROFILE_INFO_TEXT,
     PROFILE_DATA_MANAGEMENT_TEXT,
     PROFILE_CREATION_WELCOME,
-    PROFILE_EDUCATION_CHOICE,
-    PROFILE_UNIVERSITY_COURSE,
-    PROFILE_SCHOOL_CLASS,
+    PROFILE_CLASS_CHOICE,
     PROFILE_CONFIRMATION,
     PROFILE_CREATED_SUCCESS,
     PROFILE_DELETION_CONFIRMATION,
@@ -72,13 +68,10 @@ def view_profiles(call: CallbackQuery) -> None:
             text = f"👥 Ваши профили\n\n"
             
             if active_profile:
-                # Формируем отображаемые названия
-                education_display = active_profile.get_education_type_display() or "Не указано"
-                course_display = f"{active_profile.course_or_class} курс" if active_profile.education_type == 'university' else f"{active_profile.course_or_class} класс"
-                
                 text += f"✅ **Активный профиль:**\n"
                 text += f"👤 {active_profile.profile_name}\n"
-                text += f"📚 {course_display}\n"
+                text += f"📚 {active_profile.class_number} класс\n"
+                text += f"📊 Уровень: {active_profile.get_education_level_display() or 'Не указан'}\n"
                 text += f"💰 Баланс: {active_profile.balance} ₽\n\n"
                 text += f"Выберите профиль для управления:\n"
             else:
@@ -146,10 +139,10 @@ def handle_profile_creation_message(message: Message) -> None:
             
             # Сохраняем имя профиля в состоянии
             state['profile_name'] = profile_name
-            state['step'] = 'waiting_education_choice'
+            state['step'] = 'waiting_class'
             
-            text = PROFILE_EDUCATION_CHOICE.format(profile_name=profile_name)
-            markup = generate_profile_creation_keyboard()
+            text = PROFILE_CLASS_CHOICE.format(profile_name=profile_name)
+            markup = generate_profile_school_classes_keyboard()
             
             bot.send_message(message.chat.id, text, reply_markup=markup)
         except Exception as e:
@@ -157,8 +150,8 @@ def handle_profile_creation_message(message: Message) -> None:
             return
 
 
-def handle_profile_education_choice(call: CallbackQuery) -> None:
-    """Обрабатывает выбор типа образования для профиля"""
+def handle_profile_class_choice(call: CallbackQuery) -> None:
+    """Обрабатывает выбор класса для профиля"""
     telegram_id = str(call.from_user.id)
     
     if telegram_id not in profile_creation_states:
@@ -166,62 +159,37 @@ def handle_profile_education_choice(call: CallbackQuery) -> None:
     
     state = profile_creation_states[telegram_id]
     
-    if state['step'] != 'waiting_education_choice':
+    if state['step'] != 'waiting_class':
         return
     
-    education_type = call.data.replace('profile_education_', '')
-    profile_name = state['profile_name']
+    raw_value = call.data.replace('profile_class_', '')
+    education_level = None
+    
+    if raw_value == '10_base':
+        class_number = '10'
+        education_level = 'base'
+    elif raw_value == '10_profile':
+        class_number = '10'
+        education_level = 'profile'
+    elif raw_value == '11_base':
+        class_number = '11'
+        education_level = 'base'
+    elif raw_value == '11_profile':
+        class_number = '11'
+        education_level = 'profile'
+    else:
+        class_number = raw_value
     
     try:
-        state['education_type'] = education_type
-        state['step'] = 'waiting_course_or_class'
-        
-        if education_type == 'university':
-            text = PROFILE_UNIVERSITY_COURSE.format(profile_name=profile_name)
-            markup = generate_profile_university_courses_keyboard()
-        else:  # school
-            text = PROFILE_SCHOOL_CLASS.format(profile_name=profile_name)
-            markup = generate_profile_school_classes_keyboard()
-        
-        bot.edit_message_text(
-            chat_id=call.message.chat.id,
-            text=text,
-            reply_markup=markup,
-            message_id=call.message.message_id
-        )
-    except Exception as e:
-        bot.answer_callback_query(call.id, "Произошла ошибка. Попробуйте еще раз.")
-
-
-def handle_profile_course_or_class_choice(call: CallbackQuery) -> None:
-    """Обрабатывает выбор курса или класса для профиля"""
-    telegram_id = str(call.from_user.id)
-    
-    if telegram_id not in profile_creation_states:
-        return
-    
-    state = profile_creation_states[telegram_id]
-    
-    if state['step'] != 'waiting_course_or_class':
-        return
-    
-    course_or_class = call.data.replace('profile_course_', '').replace('profile_class_', '')
-    profile_name = state['profile_name']
-    education_type = state['education_type']
-    
-    try:
-        state['course_or_class'] = course_or_class
+        state['class_number'] = class_number
+        state['education_level'] = education_level
         state['step'] = 'waiting_confirmation'
         
-        # Формируем отображаемые названия
-        education_display = "ВУЗ" if education_type == 'university' else "Школа"
-        course_display = f"{course_or_class} курс" if education_type == 'university' else f"{course_or_class} класс"
-        
         text = PROFILE_CONFIRMATION.format(
-            profile_name=profile_name,
-            full_name=profile_name,  # Используем имя профиля как ФИО по умолчанию
-            education_type=education_display,
-            course_or_class=course_display
+            profile_name=state['profile_name'],
+            full_name=state['profile_name'],  # Используем имя профиля как ФИО по умолчанию
+            class_number=class_number,
+            education_level=education_level or 'Не указан'
         )
         markup = generate_profile_confirmation_keyboard()
         
@@ -256,8 +224,8 @@ def confirm_profile_creation(call: CallbackQuery) -> None:
                 user=user,
                 profile_name=state['profile_name'],
                 full_name=state['profile_name'],  # Используем имя профиля как ФИО
-                education_type=state['education_type'],
-                course_or_class=state['course_or_class'],
+                class_number=state['class_number'],
+                education_level=state['education_level'],
                 is_active=True,
                 is_registered=True
             )
@@ -265,15 +233,11 @@ def confirm_profile_creation(call: CallbackQuery) -> None:
             # Деактивируем все остальные профили пользователя
             user.student_profiles.exclude(id=profile.id).update(is_active=False)
             
-            # Формируем отображаемые названия
-            education_display = "ВУЗ" if state['education_type'] == 'university' else "Школа"
-            course_display = f"{state['course_or_class']} курс" if state['education_type'] == 'university' else f"{state['course_or_class']} класс"
-            
             text = PROFILE_CREATED_SUCCESS.format(
                 profile_name=profile.profile_name,
                 full_name=profile.full_name,
-                education_type=education_display,
-                course_or_class=course_display
+                class_number=profile.class_number,
+                education_level=profile.get_education_level_display() or 'Не указан'
             )
             markup = generate_profiles_menu_keyboard()
             
@@ -299,16 +263,13 @@ def select_profile(call: CallbackQuery) -> None:
         
         profile = StudentProfile.objects.get(id=profile_id, user__telegram_id=str(call.from_user.id))
         
-        # Формируем отображаемые названия
-        education_display = profile.get_education_type_display() or "Не указано"
-        course_display = f"{profile.course_or_class} курс" if profile.education_type == 'university' else f"{profile.course_or_class} класс"
         status_display = "Активный" if profile.is_active else "Неактивный"
         
         text = PROFILE_INFO_TEXT.format(
             profile_name=profile.profile_name,
             full_name=profile.full_name or "Не указано",
-            education_type=education_display,
-            course_or_class=course_display,
+            class_number=profile.class_number,
+            education_level=profile.get_education_level_display() or 'Не указан',
             balance=profile.balance,
             created_at=profile.created_at.strftime('%d.%m.%Y'),
             status=status_display

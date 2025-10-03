@@ -1,40 +1,85 @@
-import os
-import json
-import random
-from datetime import timedelta
-from django.utils import timezone
+from telebot.types import Message, CallbackQuery
 from bot import bot
-from django.conf import settings
-from telebot.types import (
-    Message,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    CallbackQuery,
-)
-from bot.models import User, StudentProfile
+from bot.keyboards import main_markup
 from bot.texts import MAIN_TEXT
-from bot.keyboards import main_markup, UNIVERSAL_BUTTONS
-from .registration import start_registration
+from bot.models import User, StudentProfile
+from bot.handlers.registration import start_registration
 
 
 def start(message: Message) -> None:
-    from bot import logger
-    logger.info(f"Start command received from user {message.from_user.id}")
-    start_registration(message)
+    """Обработчик команды /start"""
+    telegram_id = str(message.from_user.id)
+    
+    try:
+        # Проверяем, есть ли пользователь в базе
+        user = User.objects.get(telegram_id=telegram_id)
+        
+        # Проверяем, есть ли у пользователя хотя бы один профиль
+        if not user.student_profiles.exists():
+            # Если нет профилей, отправляем на регистрацию
+            start_registration(message)
+            return
+        
+        # Если есть профили, показываем главное меню
+        bot.send_message(message.chat.id, MAIN_TEXT, reply_markup=main_markup)
+        
+    except User.DoesNotExist:
+        # Если пользователя нет в базе, отправляем на регистрацию
+        start_registration(message)
 
 
 def show_main_menu(message: Message) -> None:
-    """Показывает главное меню пользователю"""
-    from bot import logger
-    logger.info(f"Showing main menu to user {message.from_user.id}")
-    bot.send_message(message.chat.id, MAIN_TEXT, reply_markup=main_markup)
+    """Показывает главное меню"""
+    telegram_id = str(message.from_user.id)
+    
+    try:
+        # Проверяем, есть ли пользователь в базе
+        user = User.objects.get(telegram_id=telegram_id)
+        
+        # Проверяем, есть ли у пользователя хотя бы один профиль
+        if not user.student_profiles.exists():
+            # Если нет профилей, отправляем на регистрацию
+            start_registration(message)
+            return
+        
+        # Если есть профили, показываем главное меню
+        bot.send_message(message.chat.id, MAIN_TEXT, reply_markup=main_markup)
+        
+    except User.DoesNotExist:
+        # Если пользователя нет в базе, отправляем на регистрацию
+        start_registration(message)
 
 
 def menu_call(call: CallbackQuery) -> None:
-    bot.edit_message_text(chat_id=call.message.chat.id, text=MAIN_TEXT, reply_markup=main_markup,
-                          message_id=call.message.message_id)
-
-def profile(call: CallbackQuery) -> None:
-    """Обработчик профиля - перенаправляет в меню профилей"""
-    from .profiles import profiles_menu
-    profiles_menu(call)
+    """Обработчик для возврата в главное меню"""
+    telegram_id = str(call.from_user.id)
+    
+    try:
+        # Проверяем, есть ли пользователь в базе
+        user = User.objects.get(telegram_id=telegram_id)
+        
+        # Проверяем, есть ли у пользователя хотя бы один профиль
+        if not user.student_profiles.exists():
+            # Если нет профилей, отправляем на регистрацию
+            start_registration(call.message)
+            return
+        
+        # Если есть профили, показываем главное меню
+        try:
+            bot.edit_message_text(
+                chat_id=call.message.chat.id,
+                message_id=call.message.message_id,
+                text=MAIN_TEXT,
+                reply_markup=main_markup
+            )
+        except Exception:
+            # Если не удалось отредактировать сообщение, отправляем новое
+            bot.send_message(
+                chat_id=call.message.chat.id,
+                text=MAIN_TEXT,
+                reply_markup=main_markup
+            )
+        
+    except User.DoesNotExist:
+        # Если пользователя нет в базе, отправляем на регистрацию
+        start_registration(call.message)

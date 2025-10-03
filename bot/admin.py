@@ -2,9 +2,9 @@ from django.contrib import admin
 from .models import User, StudentProfile, Payment, PaymentHistory
 
 class UserAdmin(admin.ModelAdmin):
-    list_display = ('telegram_id', 'full_name', 'education_type', 'course_or_class', 'is_registered', 'is_admin')
+    list_display = ('telegram_id', 'full_name', 'class_number', 'is_registered', 'is_admin')
     search_fields = ('full_name', 'telegram_id')
-    list_filter = ('education_type', 'is_registered', 'is_admin')
+    list_filter = ('is_registered', 'is_admin')
     ordering = ('-is_registered',)
     list_editable = ('is_admin',)
 
@@ -20,8 +20,8 @@ admin.site.register(User, UserAdmin)
 
 @admin.register(StudentProfile)
 class StudentProfileAdmin(admin.ModelAdmin):
-    list_display = ('profile_name', 'user', 'full_name', 'education_type', 'course_or_class', 'is_active', 'balance', 'created_at')
-    list_filter = ('education_type', 'is_active', 'is_registered', 'created_at')
+    list_display = ('profile_name', 'user', 'full_name', 'class_number', 'education_level', 'is_active', 'balance', 'created_at')
+    list_filter = ('education_level', 'is_active', 'is_registered', 'created_at')
     search_fields = ('profile_name', 'full_name', 'user__telegram_id')
     list_editable = ('is_active',)
     ordering = ('-is_active', '-created_at')
