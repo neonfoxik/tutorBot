@@ -51,7 +51,7 @@ class Command(BaseCommand):
                     month=target_month,
                     year=target_year,
                     amount_paid=price_info['price'],
-                    pricing_plan=price_info['name'],
+                    pricing_plan=f"{profile.class_number} класс{' (Профиль)' if profile.education_level == 'profile' else ' (База)' if profile.education_level == 'base' else ''}",
                     payment_type='card',
                     status='completed',
                     paid_at=timezone.now()
