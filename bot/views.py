@@ -4,6 +4,9 @@ from traceback import format_exc
 
 from asgiref.sync import sync_to_async
 from django.shortcuts import render
+from django.contrib.admin.views.decorators import staff_member_required
+from django.db.models import Sum, Count
+from django.utils import timezone
 from bot.handlers import *
 from django.conf import settings
 from django.http import HttpRequest, JsonResponse, HttpResponse
@@ -207,6 +210,31 @@ def set_webhook(request: HttpRequest) -> JsonResponse:
 @require_GET
 def status(request: HttpRequest) -> JsonResponse:
     return JsonResponse({"message": "OK"}, status=200)
+
+
+@staff_member_required
+def crm_dashboard(request):
+    """CRM панель для администраторов"""
+    # Получаем статистику
+    total_students = StudentProfile.objects.filter(is_registered=True).count()
+    active_students = StudentProfile.objects.filter(is_registered=True, is_active=True).count()
+    
+    # Статистика платежей
+    payment_stats = PaymentHistory.objects.filter(
+        status='completed'
+    ).aggregate(
+        total_payments=Count('id'),
+        total_income=Sum('amount_paid')
+    )
+    
+    context = {
+        'total_students': total_students,
+        'active_students': active_students,
+        'total_payments': payment_stats['total_payments'] or 0,
+        'total_income': payment_stats['total_income'] or 0
+    }
+    
+    return render(request, 'crm/dashboard.html', context)
 
 
 @require_GET

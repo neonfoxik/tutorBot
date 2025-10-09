@@ -119,6 +119,36 @@
             align-items: center;
             gap: 15px;
         }
+
+        .back-btn {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 20px;
+            background: var(--primary);
+            color: white;
+            text-decoration: none;
+            border-radius: 50px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            transition: var(--transition);
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .back-btn:hover {
+            transform: translateX(-5px);
+            background: var(--primary-dark);
+            box-shadow: 0 6px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        .back-btn i {
+            font-size: 1rem;
+            transition: transform 0.3s ease;
+        }
+
+        .back-btn:hover i {
+            transform: translateX(-3px);
+        }
         
         .logo i {
             font-size: 2.5rem;
