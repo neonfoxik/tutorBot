@@ -573,6 +573,12 @@ class Task(models.Model):
         null=True,
         blank=True
     )
+    answer = models.TextField(
+        verbose_name='Правильный ответ на задание',
+        help_text="Если ответ развернутый - оставьте поле пустым",
+        null=True,
+        blank=True
+    )
     created_by = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,
