@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>Задание</title>
+</head>
+<body>
+    <h1>{{ task.title }}</h1>
+    {% if task.description %}
+        <p>{{ task.description }}</p>
+    {% endif %}
+
+    {% if task.complex_task.all %}
+        <h3>В составе набора:</h3>
+        <ul>
+            {% for t in task.complex_task.all %}
+                <li>{{ t.title }}</li>
+            {% endfor %}
+        </ul>
+    {% endif %}
+
+    {% if task.files.all %}
+        <h3>Файлы</h3>
+        <ul>
+            {% for f in task.files.all %}
+                <li><a href="{{ f.file.url }}" target="_blank">{{ f.file.name }}</a></li>
+            {% endfor %}
+        </ul>
+    {% endif %}
+    {% if task.images.all %}
+        <h3>Изображения</h3>
+        <div>
+            {% for img in task.images.all %}
+                <img src="{{ img.image.url }}" alt="image" style="max-width: 320px;" />
+            {% endfor %}
+        </div>
+    {% endif %}
+
+    <p>
+        <a href="/bot/tasks/compose/">Создать набор</a> |
+        <a href="/bot/tasks/create/">Новое задание</a>
+    </p>
+</body>
+</html>
+
+

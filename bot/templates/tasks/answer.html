@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>Ответ на задание</title>
+</head>
+<body>
+    <h1>{{ task.title }}</h1>
+    {% if task.description %}
+        <p>{{ task.description }}</p>
+    {% endif %}
+    {% if task.files.all %}
+        <h3>Файлы</h3>
+        <ul>
+            {% for f in task.files.all %}
+                <li><a href="{{ f.file.url }}" target="_blank">{{ f.file.name }}</a></li>
+            {% endfor %}
+        </ul>
+    {% endif %}
+    {% if task.images.all %}
+        <h3>Изображения</h3>
+        <div>
+            {% for img in task.images.all %}
+                <img src="{{ img.image.url }}" alt="image" style="max-width: 320px;" />
+            {% endfor %}
+        </div>
+    {% endif %}
+
+    {% if is_complex %}
+        <h2>Ответы по подзаданиям</h2>
+        <form method="post">
+            {% csrf_token %}
+            <ol>
+                {% for item in sub_items %}
+                    <li style="margin-bottom:16px;">
+                        <div><strong>{{ item.task.title }}</strong></div>
+                        {% if item.task.description %}
+                            <div style="margin:6px 0;">{{ item.task.description }}</div>
+                        {% endif %}
+                        <textarea name="answer_text_{{ item.task.id }}" rows="5" style="width:100%;" placeholder="Краткий ответ">{{ item.initial }}</textarea>
+                    </li>
+                {% endfor %}
+            </ol>
+            <button type="submit">Отправить</button>
+        </form>
+    {% else %}
+        <h2>Ваш ответ</h2>
+        <form method="post">
+            {% csrf_token %}
+            {{ form.non_field_errors }}
+            {{ form.answer_text }}
+            <br/>
+            <button type="submit">Отправить</button>
+        </form>
+    {% endif %}
+</body>
+</html>
+
+

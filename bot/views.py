@@ -3,7 +3,7 @@ import json
 from traceback import format_exc
 
 from asgiref.sync import sync_to_async
-from django.shortcuts import render
+from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.admin.views.decorators import staff_member_required
 from django.db.models import Sum, Count
 from django.utils import timezone
@@ -44,7 +44,8 @@ from bot.handlers.payments import (
     notify_admins_about_payment
 )
 
-from .models import PaymentHistory, User, StudentProfile
+from .models import PaymentHistory, User, StudentProfile, Task, TaskFile, TaskImage, Homework, Lesson, Group
+from .forms import TaskForm, ComposeTaskForm, StudentAnswerForm
 
 
 # Регистрируем обработчики команд
@@ -375,3 +376,169 @@ def handle_balance_payment_month_selection(call):
     """Обрабатывает выбор месяца для оплаты с баланса"""
     from bot.handlers.payments import select_balance_payment_month
     select_balance_payment_month(call)
+def _resolve_submission_lesson(student: StudentProfile, task: Task) -> Lesson:
+    """Возвращает урок для привязки домашней работы. Гарантирует not null.
+
+    Приоритет:
+      1) lesson у задания
+      2) последний урок группы ученика
+      3) создаёт новый урок на сегодня в группе ученика
+    """
+    if task and task.lesson_id:
+        return task.lesson
+    # берём по группе
+    group = None
+    if task and task.group_id:
+        group = task.group
+    if group is None:
+        group = student.group
+    if group is not None:
+        last = Lesson.objects.filter(group=group).order_by('-date', '-start_time').first()
+        if last:
+            return last
+        # создаём новый урок на сегодня
+        return Lesson.objects.create(group=group, date=timezone.now().date(), topic='Автосоздано для ответа')
+    # в крайнем случае — создадим техническую группу и урок
+    teacher = User.objects.filter(is_teacher=True).first()
+    group = Group.objects.create(name=f"AutoGroup-{student.id}", teacher=teacher or User.objects.first())
+    return Lesson.objects.create(group=group, date=timezone.now().date(), topic='Автосоздано для ответа')
+
+
+
+# ======= Tasks UI =======
+@staff_member_required
+def create_task(request):
+    """Страница создания задания учителем (MVP)."""
+    if request.method == 'POST':
+        form = TaskForm(request.POST, request.FILES)
+        if form.is_valid():
+            task: Task = form.save(commit=False)
+            # Пытаемся привязать автора по telegram_id из GET/POST при наличии
+            creator_tid = request.GET.get('creator_tid') or request.POST.get('creator_tid')
+            if creator_tid:
+                task.created_by = User.objects.filter(telegram_id=str(creator_tid)).first()
+            task.save()
+
+            # Сохраняем множественные файлы/изображения
+            for f in request.FILES.getlist('files'):
+                TaskFile.objects.create(task=task, file=f)
+            for img in request.FILES.getlist('images'):
+                TaskImage.objects.create(task=task, image=img)
+            return redirect('bot:task_detail', task_id=task.id)
+    else:
+        form = TaskForm()
+    return render(request, 'tasks/create.html', {"form": form})
+
+
+@staff_member_required
+def compose_task(request):
+    """Конструктор комплексного задания: создаём задачу и добавляем подзадачи."""
+    if request.method == 'POST':
+        form = ComposeTaskForm(request.POST)
+        if form.is_valid():
+            base_task: Task = form.save(commit=False)
+            base_task.created_by = base_task.created_by or None
+            base_task.save()
+            selected = form.cleaned_data['tasks']
+            if selected:
+                base_task.complex_task.set(selected)
+            return redirect('bot:task_detail', task_id=base_task.id)
+    else:
+        form = ComposeTaskForm()
+    return render(request, 'tasks/compose.html', {"form": form})
+
+
+def task_detail(request, task_id: int):
+    """Простая страница просмотра задания."""
+    task = get_object_or_404(Task.objects.prefetch_related('files', 'images', 'complex_task'), id=task_id)
+    return render(request, 'tasks/detail.html', {"task": task})
+
+
+def answer_task(request, task_id: int, student_profile_id: int):
+    """Страница ответа ученика на задание. Для комплексного задания выводим все подзадания."""
+    task = get_object_or_404(Task, id=task_id)
+    student = get_object_or_404(StudentProfile, id=student_profile_id)
+
+    # Если это комплексное задание — собираем подзадания
+    sub_tasks = list(task.complex_task.all()) if hasattr(task, 'complex_task') else []
+    is_complex = len(sub_tasks) > 0
+
+    if is_complex:
+        if request.method == 'POST':
+            # Пройдёмся по каждому подзаданию и сохраним отдельный Homework
+            for st in sub_tasks:
+                field_name = f"answer_text_{st.id}"
+                answer_text = request.POST.get(field_name, '').strip()
+                if not answer_text:
+                    continue
+                hw = Homework.objects.filter(student=student, task=st).first()
+                lesson_obj = _resolve_submission_lesson(student, st)
+                if hw is None:
+                    Homework.objects.create(
+                        student=student,
+                        lesson=lesson_obj,
+                        task=st,
+                        assigned_text=st.description,
+                        status='done',
+                        answer_text=answer_text,
+                        submitted_at=timezone.now(),
+                    )
+                else:
+                    hw.answer_text = answer_text
+                    hw.status = 'done'
+                    hw.submitted_at = timezone.now()
+                    hw.save(update_fields=['answer_text', 'status', 'submitted_at'])
+            return render(request, 'tasks/answer_success.html', {"task": task, "student": student})
+
+        # GET: подготовим начальные ответы, если существуют
+        sub_items = []
+        for st in sub_tasks:
+            hw = Homework.objects.filter(student=student, task=st).first()
+            sub_items.append({
+                'task': st,
+                'initial': hw.answer_text if hw else ''
+            })
+        return render(
+            request,
+            'tasks/answer.html',
+            {"task": task, "student": student, "is_complex": True, "sub_items": sub_items}
+        )
+
+    # Обычное задание, одно поле ответа
+    homework = Homework.objects.filter(student=student, task=task).first()
+    if request.method == 'POST':
+        form = StudentAnswerForm(request.POST)
+        if form.is_valid():
+            answer_text = form.cleaned_data['answer_text']
+            if homework is None:
+                lesson_obj = _resolve_submission_lesson(student, task)
+                Homework.objects.create(
+                    student=student,
+                    lesson=lesson_obj,
+                    task=task,
+                    assigned_text=task.description,
+                    status='done',
+                    answer_text=answer_text,
+                    submitted_at=timezone.now(),
+                )
+            else:
+                homework.answer_text = answer_text
+                homework.status = 'done'
+                homework.submitted_at = timezone.now()
+                homework.save(update_fields=['answer_text', 'status', 'submitted_at'])
+            return render(request, 'tasks/answer_success.html', {"task": task, "student": student})
+    else:
+        form = StudentAnswerForm(initial={"answer_text": homework.answer_text if homework else ""})
+
+    return render(request, 'tasks/answer.html', {"form": form, "task": task, "student": student, "is_complex": False})
+
+
+@staff_member_required
+def student_homework_results(request, student_profile_id: int):
+    """Просмотр результатов ДЗ по ученику для преподавателя.
+
+    Показывает список всех `Homework` ученика, сгруппированных по урокам и заданиям.
+    """
+    student = get_object_or_404(StudentProfile, id=student_profile_id)
+    homeworks = Homework.objects.filter(student=student).select_related('lesson', 'task').order_by('-submitted_at')
+    return render(request, 'tasks/results_student.html', {"student": student, "homeworks": homeworks})

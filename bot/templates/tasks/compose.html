@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>Конструктор задания</title>
+    <style>
+        .container { display: grid; grid-template-columns: 1fr 2fr; gap: 16px; }
+    </style>
+</head>
+<body>
+    <h1>Конструктор комплексного задания</h1>
+    <form method="post">
+        {% csrf_token %}
+        {{ form.non_field_errors }}
+        <div>
+            {{ form.title.label_tag }}<br/>
+            {{ form.title }}
+        </div>
+        <div>
+            {{ form.description.label_tag }}<br/>
+            {{ form.description }}
+        </div>
+        <div>
+            {{ form.group.label_tag }}<br/>
+            {{ form.group }}
+        </div>
+        <div>
+            {{ form.lesson.label_tag }}<br/>
+            {{ form.lesson }}
+        </div>
+        <div>
+            <label>Выберите подзадания</label><br/>
+            {{ form.tasks }}
+        </div>
+        <button type="submit">Создать набор</button>
+    </form>
+</body>
+</html>
+
+

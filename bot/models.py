@@ -32,6 +32,10 @@ class User(models.Model):
         default=False,
         verbose_name="Администратор"
     )
+    is_teacher = models.BooleanField(
+        default=False,
+        verbose_name="Учитель"
+    )
     balance = models.DecimalField(
         max_digits=10,
         decimal_places=2,
@@ -497,6 +501,14 @@ class Homework(models.Model):
         ('text', 'Текстовый ответ'),
     ]
 
+    # Поле для объединения ответов на задания в 1 домашку
+    complex_homework = models.ManyToManyField(
+        'self',
+        verbose_name="В составе домашней работы",
+        null=True,
+        blank=True
+    )
+
     student = models.ForeignKey(
         StudentProfile,
         on_delete=models.CASCADE,
@@ -510,7 +522,7 @@ class Homework(models.Model):
         verbose_name='Урок'
     )
     task = models.ForeignKey(
-        'Task',
+        "Task",
         on_delete=models.SET_NULL,
         related_name='homeworks',
         verbose_name='Задание',
@@ -563,6 +575,14 @@ class Homework(models.Model):
 
 class Task(models.Model):
     """Задача/задание с описанием и вложениями (файлы/изображения)."""
+
+    # Поле для объединения заданий в 1 набор
+    complex_task = models.ManyToManyField(
+        'self',
+        verbose_name="Набор заданий",
+        null=True,
+        blank=True
+    )
 
     title = models.CharField(
         max_length=200,
