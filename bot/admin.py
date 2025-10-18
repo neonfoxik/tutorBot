@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import User, StudentProfile, Payment, PaymentHistory, Group, Lesson, LessonAttendance, Homework, Task, TaskFile, TaskImage
+from .models import User, StudentProfile, Payment, PaymentHistory, Group, Lesson, LessonAttendance, ComplexHomework, Homework, ComplexTask, Task, TaskFile, TaskImage
 
 class UserAdmin(admin.ModelAdmin):
     list_display = ('telegram_id', 'full_name', 'class_number', 'is_registered', 'is_admin')
@@ -55,19 +55,31 @@ class LessonAttendanceAdmin(admin.ModelAdmin):
     ordering = ('-marked_at',)
 
 
+@admin.register(ComplexHomework)
+class ComplexHomeworkAdmin(admin.ModelAdmin):
+    list_display = ('student', 'lesson', 'complex_task', 'group', 'status')
+    list_filter = ('status', 'lesson__group', 'complex_task')
+    search_fields = ('student__profile_name', 'lesson__group__name', 'complex_task__title')
+
+
 @admin.register(Homework)
 class HomeworkAdmin(admin.ModelAdmin):
-    list_display = ('student', 'lesson', 'task', 'status', 'result', 'submitted_at', 'checked_at')
-    list_filter = ('status', 'result', 'lesson__group', 'task')
-    search_fields = ('student__profile_name', 'lesson__group__name', 'task__title')
+    list_display = ('task', 'status', 'result', 'submitted_at', 'checked_at')
+    list_filter = ('status', 'result', 'complex_homework__complex_task')
+    search_fields = ('student__profile_name', 'complex_homework__lesson__group__name', 'task__title')
     ordering = ('-submitted_at',)
+
+
+@admin.register(ComplexTask)
+class ComplexTaskAdmin(admin.ModelAdmin):
+    list_display = ('title',)
+    search_fields = ('title', 'description')
 
 
 @admin.register(Task)
 class TaskAdmin(admin.ModelAdmin):
-    list_display = ('title', 'group', 'lesson', 'created_by', 'created_at')
-    list_filter = ('group', 'lesson')
-    search_fields = ('title', 'description', 'group__name', 'lesson__topic', 'created_by__full_name')
+    list_display = ('title', 'created_by', 'created_at')
+    search_fields = ('title', 'description', 'created_by__full_name')
     ordering = ('-created_at',)
 
 

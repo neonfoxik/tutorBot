@@ -486,9 +486,60 @@ class LessonAttendance(models.Model):
     def __str__(self):
         return f"{self.student.profile_name} — {self.lesson.date}: {self.get_status_display()}"
 
+class ComplexHomework(models.Model):
+    """Домашняя работа ученика"""
+    
+    STATUS_CHOICES = [
+        ('done', 'Сделал'),
+        ('not_done', 'Не сделал'),
+    ]
+
+    student = models.ForeignKey(
+        StudentProfile,
+        on_delete=models.CASCADE,
+        related_name='homeworks',
+        verbose_name='Ученик',
+        null=True,
+        blank=True
+    )
+    group = models.ForeignKey(
+        Group,
+        on_delete=models.SET_NULL,
+        related_name='homeworks',
+        verbose_name='Группа',
+        null=True,
+        blank=True
+    )
+    lesson = models.ForeignKey(
+        Lesson,
+        on_delete=models.CASCADE,
+        related_name='homeworks',
+        verbose_name='Урок'
+    )
+    status = models.CharField(
+        max_length=8,
+        choices=STATUS_CHOICES,
+        default='not_done',
+        verbose_name='Статус'
+    )
+    complex_task = models.ForeignKey(
+        'ComplexTask',
+        on_delete=models.SET_NULL,
+        verbose_name="Набор заданий",
+        null=True,
+        blank=True
+    )
+
+    class Meta:
+        verbose_name = 'Домашнее задание'
+        verbose_name_plural = 'Домашние задания'
+
+    def __str__(self):
+        return f"{self.student.profile_name if self.student else self.group.name} — {self.lesson}"
+
 
 class Homework(models.Model):
-    """Домашнее задание ученика к уроку"""
+    """Ответы ученика в домашней работе"""
 
     STATUS_CHOICES = [
         ('done', 'Сделал'),
@@ -502,29 +553,18 @@ class Homework(models.Model):
     ]
 
     # Поле для объединения ответов на задания в 1 домашку
-    complex_homework = models.ManyToManyField(
-        'self',
+    complex_homework = models.ForeignKey(
+        ComplexHomework,
+        related_name="homework_answers",
         verbose_name="В составе домашней работы",
+        on_delete=models.CASCADE,
         null=True,
-        blank=True
-    )
-
-    student = models.ForeignKey(
-        StudentProfile,
-        on_delete=models.CASCADE,
-        related_name='homeworks',
-        verbose_name='Ученик'
-    )
-    lesson = models.ForeignKey(
-        Lesson,
-        on_delete=models.CASCADE,
-        related_name='homeworks',
-        verbose_name='Урок'
+        default=None
     )
     task = models.ForeignKey(
         "Task",
         on_delete=models.SET_NULL,
-        related_name='homeworks',
+        related_name='homework_answers',
         verbose_name='Задание',
         null=True,
         blank=True
@@ -564,26 +604,65 @@ class Homework(models.Model):
     )
 
     class Meta:
-        verbose_name = 'Домашнее задание'
-        verbose_name_plural = 'Домашние задания'
-        unique_together = [('student', 'lesson')]
+        verbose_name = 'Ответ на домашнее задание'
+        verbose_name_plural = 'Ответы на домашние задания'
         ordering = ['-submitted_at']
 
     def __str__(self):
-        return f"{self.student.profile_name} — {self.lesson}"
+        return f"{self.complex_homework.student.profile_name} — {self.complex_homework.lesson}"
+
+
+class ComplexTask(models.Model):
+    """Набор заданий"""
+    title = models.CharField(
+        max_length=500,
+        verbose_name="Название",
+        null=True,
+        blank=True
+    )
+    description = models.TextField(
+        max_length=2000,
+        verbose_name="Описание",
+        null=True,
+        blank=True
+    )
+    """group = models.ForeignKey(
+        Group,
+        on_delete=models.SET_NULL,
+        related_name='tasks',
+        verbose_name='Группа',
+        null=True,
+        blank=True
+    )
+    lesson = models.ForeignKey(
+        Lesson,
+        on_delete=models.SET_NULL,
+        related_name='tasks',
+        verbose_name='Урок',
+        null=True,
+        blank=True
+    )"""
+
+    class Meta:
+        verbose_name = 'Набор заданий'
+        verbose_name_plural = 'Наборы заданий'
+
+    def __str__(self):
+        return f"{self.title}"
 
 
 class Task(models.Model):
     """Задача/задание с описанием и вложениями (файлы/изображения)."""
 
     # Поле для объединения заданий в 1 набор
-    complex_task = models.ManyToManyField(
-        'self',
+    complex_task = models.ForeignKey(
+        ComplexTask,
+        related_name="tasks",
         verbose_name="Набор заданий",
+        on_delete=models.SET_NULL,
         null=True,
-        blank=True
+        default=None
     )
-
     title = models.CharField(
         max_length=200,
         verbose_name='Заголовок'
@@ -604,22 +683,6 @@ class Task(models.Model):
         on_delete=models.SET_NULL,
         related_name='created_tasks',
         verbose_name='Создатель',
-        null=True,
-        blank=True
-    )
-    group = models.ForeignKey(
-        Group,
-        on_delete=models.SET_NULL,
-        related_name='tasks',
-        verbose_name='Группа',
-        null=True,
-        blank=True
-    )
-    lesson = models.ForeignKey(
-        Lesson,
-        on_delete=models.SET_NULL,
-        related_name='tasks',
-        verbose_name='Урок',
         null=True,
         blank=True
     )

@@ -8,6 +8,8 @@ from django.contrib.admin.views.decorators import staff_member_required
 from django.db.models import Sum, Count
 from django.utils import timezone
 from bot.handlers import *
+from django.db.models.signals import post_save
+from django.dispatch import receiver
 from django.conf import settings
 from django.http import HttpRequest, JsonResponse, HttpResponse
 from django.views.decorators.csrf import csrf_exempt
@@ -44,7 +46,7 @@ from bot.handlers.payments import (
     notify_admins_about_payment
 )
 
-from .models import PaymentHistory, User, StudentProfile, Task, TaskFile, TaskImage, Homework, Lesson, Group
+from .models import PaymentHistory, User, StudentProfile, ComplexTask, Task, TaskFile, TaskImage, ComplexHomework, Homework, Lesson, Group
 from .forms import TaskForm, ComposeTaskForm, StudentAnswerForm
 
 
@@ -274,6 +276,12 @@ bot.register_callback_query_handler(view_profiles, func=lambda c: c.data == "vie
 bot.register_callback_query_handler(create_profile, func=lambda c: c.data == "create_profile")
 bot.register_callback_query_handler(confirm_profile_creation, func=lambda c: c.data == "confirm_profile_creation")
 
+@receiver(post_save, sender=ComplexHomework)
+def assign_student_to_complex_homework(sender, instance, created, **kwargs):
+    if created:  # Проверяем, создано ли новое объект
+        if instance.group != None and instance.student is None:
+            for student in StudentProfile.objects.filter(group=instance.group):
+                ComplexHomework.objects.filter(group=instance.group, lesson=instance.lesson).update(student=student)
 # Обработчики для выбора профиля
 @bot.callback_query_handler(func=lambda call: call.data.startswith("select_profile_"))
 def handle_profile_selection(call):
@@ -376,7 +384,7 @@ def handle_balance_payment_month_selection(call):
     """Обрабатывает выбор месяца для оплаты с баланса"""
     from bot.handlers.payments import select_balance_payment_month
     select_balance_payment_month(call)
-def _resolve_submission_lesson(student: StudentProfile, task: Task) -> Lesson:
+def _resolve_submission_lesson(student: StudentProfile, task: ComplexTask) -> Lesson:
     """Возвращает урок для привязки домашней работы. Гарантирует not null.
 
     Приоритет:
@@ -384,11 +392,11 @@ def _resolve_submission_lesson(student: StudentProfile, task: Task) -> Lesson:
       2) последний урок группы ученика
       3) создаёт новый урок на сегодня в группе ученика
     """
-    if task and task.lesson_id:
+    if task and task.lesson.id:
         return task.lesson
     # берём по группе
     group = None
-    if task and task.group_id:
+    if task and task.group.id:
         group = task.group
     if group is None:
         group = student.group
@@ -450,50 +458,81 @@ def compose_task(request):
 
 def task_detail(request, task_id: int):
     """Простая страница просмотра задания."""
-    task = get_object_or_404(Task.objects.prefetch_related('files', 'images', 'complex_task'), id=task_id)
+    task = get_object_or_404(ComplexTask.objects.prefetch_related('files', 'images', 'complex_task'), id=task_id)
     return render(request, 'tasks/detail.html', {"task": task})
 
 
-def answer_task(request, task_id: int, student_profile_id: int):
+def answer_task(request, complexhomework_id: int, student_profile_id: int):
     """Страница ответа ученика на задание. Для комплексного задания выводим все подзадания."""
-    task = get_object_or_404(Task, id=task_id)
+    #task = get_object_or_404(ComplexTask, id=task_id)
+    complex_hw = get_object_or_404(ComplexHomework, id=complexhomework_id)
     student = get_object_or_404(StudentProfile, id=student_profile_id)
+    task = complex_hw.complex_task
 
     # Если это комплексное задание — собираем подзадания
-    sub_tasks = list(task.complex_task.all()) if hasattr(task, 'complex_task') else []
-    is_complex = len(sub_tasks) > 0
+    sub_tasks = list(Task.objects.filter(complex_task=task))
+    is_complex = True #len(sub_tasks) > 0
+
+    # Если задание уже отправлено, пользователю показывается страница с соотв. надписью. Не даем ему изменить ответ
+    if complex_hw.status == "done":
+        return render(request, 'tasks/answer_has_sent.html')
 
     if is_complex:
         if request.method == 'POST':
-            # Пройдёмся по каждому подзаданию и сохраним отдельный Homework
+            # Пройдёмся по каждому подзаданию, сохраним отдельный Homework и объединим в комплексный Homework
+            lesson_obj = complex_hw.lesson #_resolve_submission_lesson(student, task)
+            #complex_hw = ComplexHomework.objects.filter(student=student, complex_task=task).first()
+            if complex_hw is None:
+                complex_hw = ComplexHomework.objects.create(
+                                student=student,
+                                lesson=lesson_obj,
+                                complex_task=task,
+                                status='done',
+                            )
+            # Перебираем задания в наборе и выводим их
             for st in sub_tasks:
                 field_name = f"answer_text_{st.id}"
                 answer_text = request.POST.get(field_name, '').strip()
                 if not answer_text:
                     continue
-                hw = Homework.objects.filter(student=student, task=st).first()
-                lesson_obj = _resolve_submission_lesson(student, st)
+                hw = Homework.objects.filter(complex_homework=complex_hw, task=st).first()  # Экземпляр для записи ответа на задание
+                lesson_obj = complex_hw.lesson #_resolve_submission_lesson(student, task)
+                
+                # Проверяем, является ли ответ правильным, неправильным или текстовым
+                if st.answer:
+                    if str(answer_text) == st.answer:
+                        answer_result = "correct"
+                    elif str(answer_text) != st.answer:
+                        answer_result = "incorrect"
+                else:
+                    answer_result = "text"
+
                 if hw is None:
                     Homework.objects.create(
-                        student=student,
-                        lesson=lesson_obj,
+                        complex_homework=complex_hw,
                         task=st,
                         assigned_text=st.description,
                         status='done',
+                        result=answer_result,
                         answer_text=answer_text,
                         submitted_at=timezone.now(),
                     )
                 else:
-                    hw.answer_text = answer_text
+                    ...
+                    """hw.answer_text = answer_text
                     hw.status = 'done'
                     hw.submitted_at = timezone.now()
-                    hw.save(update_fields=['answer_text', 'status', 'submitted_at'])
+                    hw.save(update_fields=['answer_text', 'status', 'submitted_at'])"""
+
+            # В конце ставим статус на д\з "выполнен"
+            complex_hw.status = 'done'
+            complex_hw.save()
             return render(request, 'tasks/answer_success.html', {"task": task, "student": student})
 
         # GET: подготовим начальные ответы, если существуют
         sub_items = []
         for st in sub_tasks:
-            hw = Homework.objects.filter(student=student, task=st).first()
+            hw = Homework.objects.filter(complex_homework=complex_hw, task=st).first()
             sub_items.append({
                 'task': st,
                 'initial': hw.answer_text if hw else ''
@@ -504,32 +543,10 @@ def answer_task(request, task_id: int, student_profile_id: int):
             {"task": task, "student": student, "is_complex": True, "sub_items": sub_items}
         )
 
-    # Обычное задание, одно поле ответа
-    homework = Homework.objects.filter(student=student, task=task).first()
-    if request.method == 'POST':
-        form = StudentAnswerForm(request.POST)
-        if form.is_valid():
-            answer_text = form.cleaned_data['answer_text']
-            if homework is None:
-                lesson_obj = _resolve_submission_lesson(student, task)
-                Homework.objects.create(
-                    student=student,
-                    lesson=lesson_obj,
-                    task=task,
-                    assigned_text=task.description,
-                    status='done',
-                    answer_text=answer_text,
-                    submitted_at=timezone.now(),
-                )
-            else:
-                homework.answer_text = answer_text
-                homework.status = 'done'
-                homework.submitted_at = timezone.now()
-                homework.save(update_fields=['answer_text', 'status', 'submitted_at'])
-            return render(request, 'tasks/answer_success.html', {"task": task, "student": student})
     else:
         form = StudentAnswerForm(initial={"answer_text": homework.answer_text if homework else ""})
 
+    
     return render(request, 'tasks/answer.html', {"form": form, "task": task, "student": student, "is_complex": False})
 
 
@@ -540,5 +557,11 @@ def student_homework_results(request, student_profile_id: int):
     Показывает список всех `Homework` ученика, сгруппированных по урокам и заданиям.
     """
     student = get_object_or_404(StudentProfile, id=student_profile_id)
-    homeworks = Homework.objects.filter(student=student).select_related('lesson', 'task').order_by('-submitted_at')
-    return render(request, 'tasks/results_student.html', {"student": student, "homeworks": homeworks})
+    homework = ComplexHomework.objects.filter(student=student)
+    list_hw = list()
+    for hw in homework:
+        list_hw.append(hw)
+        for answer in Homework.objects.filter(complex_homework=hw):
+            list_hw.append(answer)
+    #homeworks = Homework.objects.filter(complex_homework=homework)
+    return render(request, 'tasks/results_student.html', {"student": student, "homeworks": list_hw})

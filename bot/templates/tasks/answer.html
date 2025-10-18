@@ -34,6 +34,18 @@
                 {% for item in sub_items %}
                     <li style="margin-bottom:16px;">
                         <div><strong>{{ item.task.title }}</strong></div>
+                        {% if item.task.images.all %}
+                        {% for img in item.task.images.all %}
+                            <img src="{{ img.image.url }}" alt="image" style="max-width: 320px;" />
+                        {% endfor %}
+                        {% endif %}
+                        
+                        {% if item.task.files.all %}
+                        {% for f in item.task.files.all %}
+                            <li><a href="{{ f.file.url }}" target="_blank">Посмотреть файл</a></li>
+                        {% endfor %}
+                        {% endif %}
+                        
                         {% if item.task.description %}
                             <div style="margin:6px 0;">{{ item.task.description }}</div>
                         {% endif %}

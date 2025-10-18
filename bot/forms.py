@@ -12,8 +12,6 @@ class TaskForm(forms.ModelForm):
             "title",
             "description",
             "answer",
-            "group",
-            "lesson",
         ]
 
 
@@ -31,8 +29,6 @@ class ComposeTaskForm(forms.ModelForm):
         fields = [
             "title",
             "description",
-            "group",
-            "lesson",
         ]
 
 
