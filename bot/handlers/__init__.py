@@ -39,3 +39,10 @@ from .profiles import (
     final_delete_profile,
     is_user_creating_profile
 )
+from .student_menu import (
+    education,
+    education_show,
+    education_studentprofiles_handler,
+    education_show_handler,
+    show_lessons
+)

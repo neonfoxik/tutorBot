@@ -276,12 +276,22 @@ bot.register_callback_query_handler(view_profiles, func=lambda c: c.data == "vie
 bot.register_callback_query_handler(create_profile, func=lambda c: c.data == "create_profile")
 bot.register_callback_query_handler(confirm_profile_creation, func=lambda c: c.data == "confirm_profile_creation")
 
+# Обработчики student_menu
+bot.register_message_handler(education, commands=['education'])
+bot.register_callback_query_handler(education_show_handler, func=lambda c: c.data.split("_")[0] == "lessons" or c.data.split("_")[0] == "homeworks")
+bot.register_callback_query_handler(education_studentprofiles_handler, func=lambda c: c.data.split("_")[0] == "education")
+bot.register_callback_query_handler(show_lessons, func=lambda c: c.data.startswith("lessons-"))
+
+
+
 @receiver(post_save, sender=ComplexHomework)
 def assign_student_to_complex_homework(sender, instance, created, **kwargs):
+    """Функция, сохраняющая д\з для всей группы при создании ComplexHomework"""
     if created:  # Проверяем, создано ли новое объект
         if instance.group != None and instance.student is None:
             for student in StudentProfile.objects.filter(group=instance.group):
                 ComplexHomework.objects.filter(group=instance.group, lesson=instance.lesson).update(student=student)
+
 # Обработчики для выбора профиля
 @bot.callback_query_handler(func=lambda call: call.data.startswith("select_profile_"))
 def handle_profile_selection(call):
@@ -384,6 +394,10 @@ def handle_balance_payment_month_selection(call):
     """Обрабатывает выбор месяца для оплаты с баланса"""
     from bot.handlers.payments import select_balance_payment_month
     select_balance_payment_month(call)
+
+
+"""Site"""
+
 def _resolve_submission_lesson(student: StudentProfile, task: ComplexTask) -> Lesson:
     """Возвращает урок для привязки домашней работы. Гарантирует not null.
 

@@ -507,6 +507,7 @@ class ComplexHomework(models.Model):
         on_delete=models.SET_NULL,
         related_name='homeworks',
         verbose_name='Группа',
+        help_text="Если вы хотите задать д\з всей группе - заполните это поле, а поле Ученик оставьте пустым.",
         null=True,
         blank=True
     )
