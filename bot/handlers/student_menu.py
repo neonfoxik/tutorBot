@@ -94,7 +94,7 @@ def education_show_handler(call: CallbackQuery):
         if homeworks.exists():
             homeworks_markup = InlineKeyboardMarkup()
             for homework in homeworks:
-                homeworks_markup.add(InlineKeyboardButton(text=f"{homework}", url=f"{settings.HOOK if settings.HOOK[-1] == '/' else settings.HOOK+'/'}tasks/{homework.id}/answer/{studentprofile.id}/"))
+                homeworks_markup.add(InlineKeyboardButton(text=f"{homework}", url=f"{settings.HOOK if settings.HOOK[-1] == '/' else settings.HOOK+'/'}bot/tasks/{homework.id}/answer/{studentprofile.id}/"))
             text="Вот ваши заданные домашние работы"
 
         bot.edit_message_text(
