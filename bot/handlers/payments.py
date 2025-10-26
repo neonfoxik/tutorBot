@@ -1,6 +1,9 @@
 from telebot.types import CallbackQuery
 from django.db import transaction
 from bot import bot
+import logging
+
+logger = logging.getLogger('bot')
 from bot.models import User, Payment, PaymentHistory
 from bot.keyboards import (
     generate_payment_method_keyboard,
@@ -259,6 +262,13 @@ def select_payment_method(call: CallbackQuery) -> None:
 
 def select_payment_month(call: CallbackQuery) -> None:
     """Обрабатывает выбор месяца для оплаты через ЮKassa"""
+    logger.info(f"Начало обработки выбора месяца. User ID: {call.from_user.id}")
+    logger.info(f"Callback data: {call.data}")
+    logger.info("Проверка настроек YooKassa:")
+    from django.conf import settings
+    logger.info(f"YOOKASSA_TEST_MODE: {settings.YOOKASSA_TEST_MODE}")
+    logger.info(f"YOOKASSA_SHOP_ID exists: {'YOOKASSA_SHOP_ID' in dir(settings)}")
+    logger.info(f"YOOKASSA_SECRET_KEY exists: {'YOOKASSA_SECRET_KEY' in dir(settings)}")
     try:
         # Получаем месяц и год из callback_data
         parts = call.data.split('_')
@@ -307,6 +317,7 @@ def select_payment_month(call: CallbackQuery) -> None:
         description = price_info['description']
         
         # Создаем платеж в ЮKassa
+        logger.info(f"Начинаем создание платежа в YooKassa для пользователя {user.telegram_id}")
         try:
             # Добавляем метаданные для платежа
             metadata = {
@@ -390,9 +401,10 @@ def select_payment_month(call: CallbackQuery) -> None:
     except Exception as e:
         import traceback
         error_info = traceback.format_exc()
-        print(f"Подробная информация об ошибке в select_payment_month:\n{error_info}")
-        print(f"Данные callback: {call.data}")
-        print(f"ID пользователя: {call.from_user.id}")
+        logger.error(f"Подробная информация об ошибке в select_payment_month:\n{error_info}")
+        logger.error(f"Данные callback: {call.data}")
+        logger.error(f"ID пользователя: {call.from_user.id}")
+        logger.error(f"Ошибка: {str(e)}")
         bot.answer_callback_query(call.id, "❌ Ошибка при обработке платежа. Попробуйте позже.")
         return
 

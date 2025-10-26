@@ -31,6 +31,15 @@ class YooKassaClient:
         Returns:
             dict: Ответ от API ЮKassa
         """
+        import logging
+        logger = logging.getLogger('bot')
+        logger.info(f"Создание платежа в YooKassa:")
+        logger.info(f"Shop ID: {self.shop_id}")
+        logger.info(f"Test Mode: {self.test_mode}")
+        logger.info(f"Amount: {amount}")
+        logger.info(f"Description: {description}")
+        logger.info(f"Return URL: {return_url}")
+        logger.info(f"Metadata: {metadata}")
         url = f"{self.base_url}/payments"
         
         payment_data = {
