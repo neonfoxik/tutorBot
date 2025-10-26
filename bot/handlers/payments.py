@@ -388,7 +388,11 @@ def select_payment_month(call: CallbackQuery) -> None:
         bot.answer_callback_query(call.id, "❌ Ошибка в формате данных")
         return
     except Exception as e:
-        print(f"Error in select_payment_month: {str(e)}")
+        import traceback
+        error_info = traceback.format_exc()
+        print(f"Подробная информация об ошибке в select_payment_month:\n{error_info}")
+        print(f"Данные callback: {call.data}")
+        print(f"ID пользователя: {call.from_user.id}")
         bot.answer_callback_query(call.id, "❌ Ошибка при обработке платежа. Попробуйте позже.")
         return
 
