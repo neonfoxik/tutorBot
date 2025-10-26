@@ -97,12 +97,9 @@ else:
             "HOST": "127.0.0.1",
             "OPTIONS": {
                 "charset": "utf8mb4",
-                "init_command": [
-                    "SET sql_mode='STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION'",
-                    "ALTER DATABASE " + os.getenv("NAME_DB", "") + " CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
-                    "SET NAMES utf8mb4",
-                    "SET character_set_connection=utf8mb4",
-                ],
+                "init_command": "SET sql_mode='STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION'; "
+                               "SET NAMES utf8mb4; "
+                               "SET character_set_connection=utf8mb4",
             },
         }
     }
