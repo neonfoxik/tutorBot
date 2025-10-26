@@ -12,26 +12,53 @@ class YooKassaClient:
     def __init__(self):
         import logging
         logger = logging.getLogger('bot')
+        logger.info("==========================================")
         logger.info("Инициализация YooKassa клиента")
-        logger.info(f"LOCAL: {os.getenv('LOCAL')}")
-        logger.info(f"DEBUG: {settings.DEBUG}")
+        logger.info("------------------------------------------")
         
+        # Проверяем все переменные окружения
+        env_vars = {
+            'LOCAL': os.getenv('LOCAL'),
+            'DEBUG': settings.DEBUG,
+            'BOT_TOKEN': os.getenv('BOT_TOKEN'),
+            'YOOKASSA_SHOP_ID': os.getenv('YOOKASSA_SHOP_ID'),
+            'YOOKASSA_SECRET_KEY': bool(os.getenv('YOOKASSA_SECRET_KEY')),  # только наличие
+            'YOOKASSA_TEST_MODE': os.getenv('YOOKASSA_TEST_MODE')
+        }
+        
+        for key, value in env_vars.items():
+            logger.info(f"{key}: {value}")
+        
+        logger.info("------------------------------------------")
+        
+        # Проверяем настройки Django
         self.shop_id = settings.YOOKASSA_SHOP_ID
         if not self.shop_id:
-            logger.error("YOOKASSA_SHOP_ID не установлен")
+            error_msg = "YOOKASSA_SHOP_ID не установлен"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
         
         self.secret_key = settings.YOOKASSA_SECRET_KEY
         if not self.secret_key:
-            logger.error("YOOKASSA_SECRET_KEY не установлен")
+            error_msg = "YOOKASSA_SECRET_KEY не установлен"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
         
         self.test_mode = settings.YOOKASSA_TEST_MODE
-        logger.info(f"YOOKASSA_TEST_MODE: {self.test_mode}")
+        logger.info(f"Режим работы YooKassa: {'тестовый' if self.test_mode else 'боевой'}")
         
-        # URL для API ЮKassa (одинаковый для тестового и боевого режима)
+        # URL для API ЮKassa
         self.base_url = "https://api.yookassa.ru/v3"
         
+        # Проверяем авторизацию
         self.auth = (self.shop_id, self.secret_key)
-        logger.info("YooKassa клиент инициализирован")
+        if not all(self.auth):
+            error_msg = "Отсутствуют данные авторизации YooKassa"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+            
+        logger.info("YooKassa клиент успешно инициализирован")
+        logger.info("==========================================")
     
     def create_payment(self, amount, description, return_url=None, metadata=None):
         """
@@ -105,27 +132,46 @@ class YooKassaClient:
             
             # Используем более простой подход, как в curl
             try:
-                logger.info("Отправляем запрос к ЮKassa...")
+                logger.info("==========================================")
+                logger.info("Отправка запроса к YooKassa")
+                logger.info("------------------------------------------")
                 
-                # Добавляем User-Agent как в curl
+                # Добавляем User-Agent и другие заголовки
                 headers['User-Agent'] = 'YooKassa-Bot/1.0'
+                headers['Accept'] = 'application/json'
+                headers['Accept-Charset'] = 'utf-8'
                 
                 # Логируем детали запроса
+                logger.info("Параметры запроса:")
                 logger.info(f"URL: {url}")
                 logger.info(f"Headers: {headers}")
-                logger.info(f"Auth: {bool(self.auth)}")  # Только факт наличия авторизации
-                logger.info(f"Payment Data: {json.dumps(payment_data, ensure_ascii=False)}")
+                logger.info(f"Auth present: {bool(self.auth)}")
+                logger.info(f"Test mode: {self.test_mode}")
+                logger.info("Payment Data:")
+                logger.info(json.dumps(payment_data, ensure_ascii=False, indent=2))
                 
+                logger.info("------------------------------------------")
+                logger.info("Отправка запроса...")
+                
+                # Устанавливаем увеличенные таймауты
                 response = session.post(
                     url,
                     auth=self.auth,
                     headers=headers,
                     json=payment_data,
-                    timeout=(15, 45)  # Увеличиваем timeout
+                    timeout=(30, 60)  # (connect timeout, read timeout)
                 )
                 
-                logger.info(f"✅ Запрос отправлен успешно. Статус: {response.status_code}")
-                logger.info(f"Ответ: {response.text[:500]}")  # Логируем только первые 500 символов ответа
+                logger.info("Ответ получен:")
+                logger.info(f"Статус код: {response.status_code}")
+                logger.info(f"Заголовки ответа: {dict(response.headers)}")
+                logger.info("Тело ответа:")
+                try:
+                    response_json = response.json()
+                    logger.info(json.dumps(response_json, ensure_ascii=False, indent=2))
+                except:
+                    logger.info(response.text[:1000])  # Логируем первую 1000 символов если не JSON
+                logger.info("==========================================")
                 
             except requests.exceptions.SSLError as e:
                 error_msg = f"❌ SSL ошибка при подключении к ЮKassa: {e}"
