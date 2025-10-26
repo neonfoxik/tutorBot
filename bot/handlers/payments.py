@@ -337,23 +337,33 @@ def select_payment_month(call: CallbackQuery) -> None:
             print(f"Payment data from YooKassa: {payment_data}")
             
             if not payment_data:
-                bot.answer_callback_query(call.id, "❌ Ошибка создания платежа: нет ответа от ЮKassa")
+                error_msg = "❌ Ошибка создания платежа: нет ответа от ЮKassa"
+                bot.answer_callback_query(call.id, error_msg)
+                bot.send_message(call.message.chat.id, error_msg)
                 return
                 
             if 'id' not in payment_data:
-                bot.answer_callback_query(call.id, "❌ Ошибка создания платежа: нет ID платежа")
+                error_msg = "❌ Ошибка создания платежа: нет ID платежа"
+                bot.answer_callback_query(call.id, error_msg)
+                bot.send_message(call.message.chat.id, error_msg)
                 return
                 
             if 'confirmation' not in payment_data:
-                bot.answer_callback_query(call.id, "❌ Ошибка создания платежа: нет данных для подтверждения")
+                error_msg = "❌ Ошибка создания платежа: нет данных для подтверждения"
+                bot.answer_callback_query(call.id, error_msg)
+                bot.send_message(call.message.chat.id, error_msg)
                 return
                 
             if 'confirmation_url' not in payment_data['confirmation']:
-                bot.answer_callback_query(call.id, "❌ Ошибка создания платежа: нет URL для оплаты")
+                error_msg = "❌ Ошибка создания платежа: нет URL для оплаты"
+                bot.answer_callback_query(call.id, error_msg)
+                bot.send_message(call.message.chat.id, error_msg)
                 return
         except Exception as e:
-            print(f"Error creating YooKassa payment: {e}")
+            error_msg = f"❌ Ошибка при создании платежа:\n\n{str(e)}"
+            logger.error(f"Error creating YooKassa payment: {e}")
             bot.answer_callback_query(call.id, "❌ Ошибка при создании платежа")
+            bot.send_message(call.message.chat.id, error_msg)
             return
         
         # Создаем запись о платеже

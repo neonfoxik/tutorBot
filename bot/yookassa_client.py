@@ -9,14 +9,28 @@ class YooKassaClient:
     """Клиент для работы с API ЮKassa"""
     
     def __init__(self):
+        import logging
+        logger = logging.getLogger('bot')
+        logger.info("Инициализация YooKassa клиента")
+        logger.info(f"LOCAL: {os.getenv('LOCAL')}")
+        logger.info(f"DEBUG: {settings.DEBUG}")
+        
         self.shop_id = settings.YOOKASSA_SHOP_ID
+        if not self.shop_id:
+            logger.error("YOOKASSA_SHOP_ID не установлен")
+        
         self.secret_key = settings.YOOKASSA_SECRET_KEY
+        if not self.secret_key:
+            logger.error("YOOKASSA_SECRET_KEY не установлен")
+        
         self.test_mode = settings.YOOKASSA_TEST_MODE
+        logger.info(f"YOOKASSA_TEST_MODE: {self.test_mode}")
         
         # URL для API ЮKassa (одинаковый для тестового и боевого режима)
         self.base_url = "https://api.yookassa.ru/v3"
         
         self.auth = (self.shop_id, self.secret_key)
+        logger.info("YooKassa клиент инициализирован")
     
     def create_payment(self, amount, description, return_url=None, metadata=None):
         """
@@ -90,10 +104,16 @@ class YooKassaClient:
             
             # Используем более простой подход, как в curl
             try:
-                print("Отправляем запрос к ЮKassa...")
+                logger.info("Отправляем запрос к ЮKassa...")
                 
                 # Добавляем User-Agent как в curl
                 headers['User-Agent'] = 'YooKassa-Bot/1.0'
+                
+                # Логируем детали запроса
+                logger.info(f"URL: {url}")
+                logger.info(f"Headers: {headers}")
+                logger.info(f"Auth: {bool(self.auth)}")  # Только факт наличия авторизации
+                logger.info(f"Payment Data: {json.dumps(payment_data, ensure_ascii=False)}")
                 
                 response = session.post(
                     url,
@@ -103,27 +123,43 @@ class YooKassaClient:
                     timeout=(15, 45)  # Увеличиваем timeout
                 )
                 
-                print(f"✅ Запрос отправлен успешно")
+                logger.info(f"✅ Запрос отправлен успешно. Статус: {response.status_code}")
+                logger.info(f"Ответ: {response.text[:500]}")  # Логируем только первые 500 символов ответа
                 
             except requests.exceptions.SSLError as e:
-                print(f"❌ SSL ошибка: {e}")
-                return None
+                error_msg = f"❌ SSL ошибка при подключении к ЮKassa: {e}"
+                logger.error(error_msg)
+                raise Exception(error_msg)
             except requests.exceptions.ConnectionError as e:
-                print(f"❌ Ошибка соединения: {e}")
-                return None
+                error_msg = f"❌ Ошибка соединения с ЮKassa: {e}"
+                logger.error(error_msg)
+                raise Exception(error_msg)
             except requests.exceptions.Timeout as e:
-                print(f"❌ Таймаут: {e}")
-                return None
+                error_msg = f"❌ Превышено время ожидания ответа от ЮKassa: {e}"
+                logger.error(error_msg)
+                raise Exception(error_msg)
             except Exception as e:
-                print(f"❌ Неожиданная ошибка: {e}")
-                return None
+                error_msg = f"❌ Неожиданная ошибка при работе с ЮKassa: {e}"
+                logger.error(error_msg)
+                raise Exception(error_msg)
             
             print(f"Статус ответа: {response.status_code}")
             print(f"Заголовки ответа: {dict(response.headers)}")
             
             if response.status_code >= 400:
-                print(f"Ошибка API: {response.text}")
-                return None
+                try:
+                    error_data = response.json()
+                    error_msg = f"❌ Ошибка API ЮKassa (код {response.status_code}):\n"
+                    if 'description' in error_data:
+                        error_msg += f"Описание: {error_data['description']}\n"
+                    if 'code' in error_data:
+                        error_msg += f"Код ошибки: {error_data['code']}\n"
+                    if 'parameter' in error_data:
+                        error_msg += f"Параметр: {error_data['parameter']}"
+                except:
+                    error_msg = f"❌ Ошибка API ЮKassa (код {response.status_code}):\n{response.text}"
+                logger.error(error_msg)
+                raise Exception(error_msg)
             
             response.raise_for_status()
             result = response.json()
