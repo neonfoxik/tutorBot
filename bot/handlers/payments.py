@@ -45,14 +45,14 @@ def payment_method(call: CallbackQuery) -> None:
         
         markup = generate_payment_method_keyboard()
         
-        text = f"💳 Оплата занятий\n\n"
-        text += f"👤 Профиль: {active_profile.profile_name}\n"
-        text += f"📚 Класс: {active_profile.class_number}\n"
-        text += f"📊 Уровень: {active_profile.get_education_level_display() or 'Не указан'}\n"
-        text += f"💰 Тариф: {class_name}\n"
-        text += f"ℹ️ {description}\n"
-        text += f"💵 Стоимость: {lesson_price} ₽\n"
-        text += f"💳 Баланс: {active_profile.balance} ₽\n\n"
+        text = f"Оплата занятий\n\n"
+        text += f"Профиль: {active_profile.profile_name}\n"
+        text += f"Класс: {active_profile.class_number}\n"
+        text += f"Уровень: {active_profile.get_education_level_display() or 'Не указан'}\n"
+        text += f"Тариф: {class_name}\n"
+        text += f"Описание: {description}\n"
+        text += f"Стоимость: {lesson_price} руб.\n"
+        text += f"Баланс: {active_profile.balance} руб.\n\n"
         text += f"Выберите способ оплаты:"
         
         try:
@@ -178,14 +178,14 @@ def start_payment(call: CallbackQuery) -> None:
         
         markup = generate_payment_method_keyboard()
         
-        text = f"💳 Оплата занятий\n\n"
-        text += f"👤 Профиль: {active_profile.profile_name}\n"
-        text += f"📚 Класс: {active_profile.class_number}\n"
-        text += f"📊 Уровень: {active_profile.get_education_level_display() or 'Не указан'}\n"
-        text += f"💰 Тариф: {class_name}\n"
-        text += f"ℹ️ {description}\n"
-        text += f"💵 Стоимость: {lesson_price} ₽\n"
-        text += f"💳 Баланс: {active_profile.balance} ₽\n\n"
+        text = f"Оплата занятий\n\n"
+        text += f"Профиль: {active_profile.profile_name}\n"
+        text += f"Класс: {active_profile.class_number}\n"
+        text += f"Уровень: {active_profile.get_education_level_display() or 'Не указан'}\n"
+        text += f"Тариф: {class_name}\n"
+        text += f"Описание: {description}\n"
+        text += f"Стоимость: {lesson_price} руб.\n"
+        text += f"Баланс: {active_profile.balance} руб.\n\n"
         text += f"Выберите способ оплаты:"
         
         bot.edit_message_text(
