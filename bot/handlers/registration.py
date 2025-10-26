@@ -1,11 +1,11 @@
 from bot.models import User, StudentProfile
 from bot import bot
 from django.conf import settings
-from bot.keyboards import school_classes_markup
+from bot.keyboards import school_classes_markup, main_markup
 from bot.texts import (
     REGISTRATION_WELCOME,
     REGISTRATION_CLASS,
-    REGISTRATION_COMPLETE
+    MAIN_TEXT
 )
 from telebot.types import CallbackQuery, Message
 from django.db import transaction
@@ -121,20 +121,14 @@ def handle_class_choice(call: CallbackQuery) -> None:
                 is_registered=True
             )
         
-        # Завершаем регистрацию
+        # Завершаем регистрацию и показываем главное меню
+        from bot.handlers.common import MAIN_TEXT, main_markup
         bot.edit_message_text(
             chat_id=call.message.chat.id,
             message_id=call.message.message_id,
-            text=REGISTRATION_COMPLETE.format(
-                full_name=user.full_name,
-                class_number=user.class_number,
-                education_level=profile.get_education_level_display() or 'Не указан'
-            )
+            text=MAIN_TEXT,
+            reply_markup=main_markup
         )
-        
-        # Показываем главное меню
-        from bot.handlers.common import show_main_menu
-        show_main_menu(call.message)
         
         # Удаляем состояние регистрации
         del registration_states[telegram_id]

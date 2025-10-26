@@ -261,9 +261,22 @@ def select_payment_month(call: CallbackQuery) -> None:
     """Обрабатывает выбор месяца для оплаты через ЮKassa"""
     try:
         # Получаем месяц и год из callback_data
-        month = int(call.data.split('_')[2])
-        year = int(call.data.split('_')[3])
-        
+        parts = call.data.split('_')
+        if len(parts) < 4:
+            bot.answer_callback_query(call.id, "❌ Неверный формат данных")
+            return
+            
+        try:
+            month = int(parts[2])
+            year = int(parts[3])
+        except (IndexError, ValueError):
+            bot.answer_callback_query(call.id, "❌ Неверный формат даты")
+            return
+            
+        if not (1 <= month <= 12):
+            bot.answer_callback_query(call.id, "❌ Неверный номер месяца")
+            return
+            
         user = User.objects.get(telegram_id=str(call.from_user.id))
         
         # Получаем активный профиль
@@ -369,8 +382,15 @@ def select_payment_month(call: CallbackQuery) -> None:
         )
     except User.DoesNotExist:
         bot.answer_callback_query(call.id, "❌ Пользователь не найден")
+        return
+    except ValueError as e:
+        print(f"ValueError in select_payment_month: {str(e)}")
+        bot.answer_callback_query(call.id, "❌ Ошибка в формате данных")
+        return
     except Exception as e:
-        bot.answer_callback_query(call.id, "❌ Произошла ошибка")
+        print(f"Error in select_payment_month: {str(e)}")
+        bot.answer_callback_query(call.id, "❌ Ошибка при обработке платежа. Попробуйте позже.")
+        return
 
 
 def select_balance_payment_month(call: CallbackQuery) -> None:
