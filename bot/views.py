@@ -5,7 +5,7 @@ from traceback import format_exc
 from asgiref.sync import sync_to_async
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.admin.views.decorators import staff_member_required
-from django.db.models import Sum, Count
+from django.db.models import Sum, Count, Q
 from django.utils import timezone
 from bot.handlers import *
 from django.db.models.signals import post_save
@@ -46,7 +46,7 @@ from bot.handlers.payments import (
     notify_admins_about_payment
 )
 
-from .models import PaymentHistory, User, StudentProfile, ComplexTask, Task, TaskFile, TaskImage, ComplexHomework, Homework, Lesson, Group
+from .models import PaymentHistory, User, StudentProfile, ComplexTask, Task, TaskFile, TaskImage, ComplexHomework, Homework, Lesson, Group, LessonAttendance
 from .forms import TaskForm, ComposeTaskForm, StudentAnswerForm
 
 
@@ -240,6 +240,70 @@ def crm_dashboard(request):
     return render(request, 'crm/dashboard.html', context)
 
 
+@staff_member_required
+def groups_list(request):
+    groups = Group.objects.prefetch_related('students', 'teacher').all()
+    # Ученики, у которых нет группы (свободные, для добавления)
+    free_students = StudentProfile.objects.filter(group__isnull=True)
+    context = {
+        'groups': groups,
+        'free_students': free_students,
+    }
+    return render(request, 'crm/groups.html', context)
+
+
+@staff_member_required
+def group_detail(request, group_id):
+    group = get_object_or_404(Group, id=group_id)
+    students = group.students.all()
+    lessons = group.lessons.order_by('date')  # Все занятия этой группы
+    # Получаем посещения одним запросом
+    att_qs = LessonAttendance.objects.filter(lesson__in=lessons, student__in=students)
+    attendances = {}
+    for att in att_qs:
+        attendances.setdefault(att.student_id, {})[att.lesson_id] = att
+    # Получаем домашки одним запросом
+    hw_qs = ComplexHomework.objects.filter(lesson__in=lessons, student__in=students)
+    homeworks = {}
+    for hw in hw_qs:
+        homeworks.setdefault(hw.student_id, {})[hw.lesson_id] = hw
+
+    context = {
+        'group': group,
+        'students': students,
+        'lessons': lessons,
+        'attendances': attendances,
+        'homeworks': homeworks,
+    }
+    return render(request, 'crm/group_detail.html', context)
+
+
+@staff_member_required
+@require_POST
+def group_add_student(request, group_id):
+    group = get_object_or_404(Group, id=group_id)
+    student_id = request.POST.get('student_id')
+    if student_id:
+        student = get_object_or_404(StudentProfile, id=student_id)
+        student.group = group
+        student.save()
+        messages.success(request, f"Ученик {student.profile_name} добавлен в группу.")
+    else:
+        messages.error(request, "Не выбран ученик для добавления.")
+    return redirect('bot:group_detail', group_id=group.id)
+
+
+@staff_member_required
+@require_POST
+def group_remove_student(request, group_id, student_id):
+    group = get_object_or_404(Group, id=group_id)
+    student = get_object_or_404(StudentProfile, id=student_id, group=group)
+    student.group = None
+    student.save()
+    messages.success(request, f"Ученик {student.profile_name} удалён из группы.")
+    return redirect('bot:group_detail', group_id=group.id)
+
+
 @require_GET
 def start_polling(request: HttpRequest) -> JsonResponse:
     """Start bot with long polling instead of webhook."""
@@ -291,6 +355,17 @@ def assign_student_to_complex_homework(sender, instance, created, **kwargs):
         if instance.group != None and instance.student is None:
             for student in StudentProfile.objects.filter(group=instance.group):
                 ComplexHomework.objects.filter(group=instance.group, lesson=instance.lesson).update(student=student)
+
+
+@receiver(post_save, sender=Lesson)
+def assign_lessonattendance_to_student(sender, instance, created, **kwargs):
+    """Функция, сохраняющая д\з для всей группы при создании ComplexHomework"""
+    if created:  # Проверяем, создано ли новое объект
+        if instance.group != None:
+            for student in StudentProfile.objects.filter(group=instance.group):
+                # Создаем экземляр модели посещения с базовым значением Не был
+                LessonAttendance.objects.create(lesson=instance, student=student, status="absent")
+
 
 # Обработчики для выбора профиля
 @bot.callback_query_handler(func=lambda call: call.data.startswith("select_profile_"))

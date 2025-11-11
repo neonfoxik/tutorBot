@@ -1,0 +1,38 @@
+{% load dict_filters %}
+<h1>Группа: {{ group.name }}</h1>
+<p>Преподаватель: {{ group.teacher }}</p>
+<table border="1" cellpadding="5" style="margin-top:1rem;width:100%;">
+  <tr>
+    <th>Ученик</th>
+    {% for lesson in lessons %}
+      <th>{{ lesson.date }} | {{ lesson.topic }}</th>
+    {% endfor %}
+  </tr>
+  {% for student in group.students.all %}
+    <tr>
+      <td>{{ student.profile_name }}</td>
+      {% for lesson in lessons %}
+        <td>
+          {# Attendance #}
+          {% with att=attendances|get_item:student.id|get_item:lesson.id %}
+            {% if att.status == 'present' %}
+              <span style="color:green;">●</span>
+            {% elif att.status == 'absent' %}
+              <span style="color:red;">●</span>
+            {% endif %}
+          {% endwith %}
+          <br>
+          {# Homework status #}
+          {% with hw=homeworks|get_item:student.id|get_item:lesson.id %}
+            {% if hw.status == 'done' %}
+              <span style="background:green;color:white;padding:2px 6px;border-radius:3px;">Выполнил</span>
+            {% elif hw.status == 'not_done' %}
+              <span style="background:red;color:white;padding:2px 6px;border-radius:3px;">Не выполнил</span>
+            {% endif %}
+          {% endwith %}
+        </td>
+      {% endfor %}
+    </tr>
+  {% endfor %}
+</table>
+<a href="{% url 'bot:groups' %}">← К списку групп</a>

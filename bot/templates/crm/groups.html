@@ -1,0 +1,44 @@
+
+<h1>Группы</h1>
+<div>
+  {% for group in groups %}
+    <details style="margin-bottom: 1.5rem;">
+      <summary style="font-size: 1.2rem; font-weight: bold;">
+        {{ group.name }} (преподаватель: {{ group.teacher }})
+      </summary>
+      <table border="1" cellpadding="5" style="margin-top: 1rem; width: 100%;">
+        <tr>
+          <th>Имя</th>
+          <th>Класс</th>
+          <th>Действия</th>
+        </tr>
+        {% for student in group.students.all %}
+        <tr>
+          <td>{{ student.profile_name }}</td>
+          <td>{{ student.class_number }}</td>
+          <td>
+            <form method="post" action="{% url 'bot:group_remove_student' group.id student.id %}" style="display:inline;" onsubmit="return confirm('Удалить ученика из группы?');">
+              {% csrf_token %}
+              <button type="submit">Удалить</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </table>
+      <form method="post" action="{% url 'bot:group_add_student' group.id %}">
+        {% csrf_token %}
+        <select name="student_id">
+          {% for student in free_students %}
+            <option value="{{ student.id }}">{{ student.profile_name }}</option>
+          {% endfor %}
+        </select>
+        <button type="submit" onclick="return confirm('Добавить ученика в группу?');">Добавить</button>
+      </form>
+      <div style="margin-top:0.5rem;">
+        <a href="{% url 'bot:group_detail' group.id %}">Подробнее о группе</a>
+      </div>
+    </details>
+  {% empty %}
+    <p>Групп не найдено.</p>
+  {% endfor %}
+</div>

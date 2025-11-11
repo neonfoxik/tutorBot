@@ -20,4 +20,9 @@ urlpatterns = [
     path("tasks/<int:task_id>/", views.task_detail, name="task_detail"),
     path("tasks/<int:complexhomework_id>/answer/<int:student_profile_id>/", views.answer_task, name="task_answer"),
     path("tasks/results/student/<int:student_profile_id>/", staff_member_required(views.student_homework_results), name="student_homework_results"),
+    # Groups
+    path("groups/", staff_member_required(views.groups_list), name="groups"),
+    path("groups/<int:group_id>/", staff_member_required(views.group_detail), name="group_detail"),
+    path("groups/<int:group_id>/add_student/", staff_member_required(views.group_add_student), name="group_add_student"),
+    path("groups/<int:group_id>/remove_student/<int:student_id>/", staff_member_required(views.group_remove_student), name="group_remove_student"),
 ]
