@@ -287,9 +287,6 @@ def group_add_student(request, group_id):
         student = get_object_or_404(StudentProfile, id=student_id)
         student.group = group
         student.save()
-        messages.success(request, f"Ученик {student.profile_name} добавлен в группу.")
-    else:
-        messages.error(request, "Не выбран ученик для добавления.")
     return redirect('bot:group_detail', group_id=group.id)
 
 
@@ -300,7 +297,6 @@ def group_remove_student(request, group_id, student_id):
     student = get_object_or_404(StudentProfile, id=student_id, group=group)
     student.group = None
     student.save()
-    messages.success(request, f"Ученик {student.profile_name} удалён из группы.")
     return redirect('bot:group_detail', group_id=group.id)
 
 
