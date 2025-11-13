@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+{% load dict_filters %}
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Отметка посещаемости</title>
+    <style>
+        body { font-family: 'Montserrat', sans-serif; background: #f5f7fa; color: #2d3748; }
+        .container { max-width: 960px; margin: 0 auto; padding: 2rem; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
+        .btn { display: inline-block; padding: 0.5rem 1rem; background: #4299e1; color: #fff; text-decoration: none; border-radius: .375rem; }
+        .btn-secondary { background: #718096; }
+        table { width: 100%; border-collapse: collapse; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+        th, td { padding: 0.75rem; border-bottom: 1px solid #e2e8f0; }
+        th { text-align: left; background: #edf2f7; }
+        textarea { width: 100%; min-height: 60px; resize: vertical; }
+        select { width: 100%; padding: 0.3rem; }
+        .actions { margin-top: 1rem; display: flex; gap: 1rem; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <div>
+            <h1>Посещаемость урока</h1>
+            <p><strong>Группа:</strong> {{ lesson.group.name }}</p>
+            <p><strong>Дата:</strong> {{ lesson.date }} {% if lesson.topic %}| {{ lesson.topic }}{% endif %}</p>
+        </div>
+        <div>
+            <a class="btn btn-secondary" href="{% url 'bot:group_detail' lesson.group.id %}">← Назад к группе</a>
+        </div>
+    </div>
+
+    <form method="post">
+        {% csrf_token %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Ученик</th>
+                    <th>Статус</th>
+                    <th>Комментарий</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for student in students %}
+                    {% with attendance=existing_attendance|get_item:student.id %}
+                    <tr>
+                        <td>{{ student.profile_name }}</td>
+                        <td>
+                            <select name="status_{{ student.id }}">
+                                {% for value, label in attendance_choices.items %}
+                                    <option value="{{ value }}" {% if attendance and attendance.status == value %}selected{% endif %}>
+                                        {{ label }}
+                                    </option>
+                                {% endfor %}
+                            </select>
+                        </td>
+                        <td>
+                            <textarea name="comment_{{ student.id }}" placeholder="Комментарий (необязательно)">{% if attendance %}{{ attendance.comment }}{% endif %}</textarea>
+                        </td>
+                    </tr>
+                    {% endwith %}
+                {% empty %}
+                    <tr>
+                        <td colspan="3">В группе пока нет активных учеников.</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <div class="actions">
+            <button type="submit" class="btn" onclick="return confirm('Сохранить посещаемость?');">Сохранить</button>
+            <a href="{% url 'bot:group_detail' lesson.group.id %}" class="btn btn-secondary">Отмена</a>
+        </div>
+    </form>
+</div>
+</body>
+</html>

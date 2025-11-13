@@ -25,4 +25,6 @@ urlpatterns = [
     path("groups/<int:group_id>/", staff_member_required(views.group_detail), name="group_detail"),
     path("groups/<int:group_id>/add_student/", staff_member_required(views.group_add_student), name="group_add_student"),
     path("groups/<int:group_id>/remove_student/<int:student_id>/", staff_member_required(views.group_remove_student), name="group_remove_student"),
+    # Lessons
+    path("lessons/<int:lesson_id>/attendance/", staff_member_required(views.lesson_attendance_mark), name="lesson_attendance_mark"),
 ]

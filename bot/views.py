@@ -4,16 +4,18 @@ from traceback import format_exc
 
 from asgiref.sync import sync_to_async
 from django.shortcuts import render, redirect, get_object_or_404
+from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
 from django.db.models import Sum, Count, Q
 from django.utils import timezone
 from bot.handlers import *
+from django.db import transaction
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.conf import settings
 from django.http import HttpRequest, JsonResponse, HttpResponse
 from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_GET, require_POST
+from django.views.decorators.http import require_GET, require_POST, require_http_methods
 from telebot.apihelper import ApiTelegramException
 from telebot.types import Update
 import telebot
@@ -298,6 +300,60 @@ def group_remove_student(request, group_id, student_id):
     student.group = None
     student.save()
     return redirect('bot:group_detail', group_id=group.id)
+
+
+@staff_member_required
+@require_http_methods(["GET", "POST"])
+def lesson_attendance_mark(request, lesson_id: int):
+    lesson = get_object_or_404(Lesson.objects.select_related("group"), id=lesson_id)
+    students = lesson.group.students.filter(is_active=True).order_by("profile_name")
+    attendance_choices = dict(LessonAttendance.STATUS_CHOICES)
+
+    # Загружаем существующие отметки в словарь
+    existing_attendance = {
+        att.student_id: att
+        for att in LessonAttendance.objects.filter(lesson=lesson, student__in=students)
+    }
+
+    if request.method == "POST":
+        try:
+            with transaction.atomic():
+                for student in students:
+                    status_key = f"status_{student.id}"
+                    comment_key = f"comment_{student.id}"
+
+                    status_value = request.POST.get(status_key, "absent")
+                    comment_value = request.POST.get(comment_key, "").strip()
+
+                    attendance = existing_attendance.get(student.id)
+
+                    if attendance:
+                        attendance.status = status_value
+                        attendance.comment = comment_value
+                        attendance.save(update_fields=["status", "comment", "marked_at"])
+                    else:
+                        LessonAttendance.objects.create(
+                            lesson=lesson,
+                            student=student,
+                            status=status_value,
+                            comment=comment_value,
+                        )
+            messages.success(request, "Посещаемость сохранена.")
+            return redirect("bot:group_detail", group_id=lesson.group_id)
+        except Exception as exc:
+            logger.exception("Ошибка сохранения посещаемости: %s", exc)
+            messages.error(
+                request,
+                "Не удалось сохранить посещаемость. Проверьте данные и попробуйте ещё раз.",
+            )
+
+    context = {
+        "lesson": lesson,
+        "students": students,
+        "attendance_choices": attendance_choices,
+        "existing_attendance": existing_attendance,
+    }
+    return render(request, "crm/lesson_attendance.html", context)
 
 
 @require_GET
