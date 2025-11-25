@@ -16,7 +16,7 @@
                         <th>Ученик</th>
                         {% for lesson in lessons %}
                             <th>
-                                {{ lesson.date|date:"d MMM" }}<br>
+                                {{ lesson.date|date:"d M" }}<br>
                                 <small>{{ lesson.topic|default:"Без темы" }}</small>
                             </th>
                         {% endfor %}

@@ -20,9 +20,6 @@
         </div>
     </div>
     <div class="actions-row">
-        {% if latest_lesson_id %}
-            <a class="crm-btn crm-btn--accent" href="{% url 'bot:lesson_attendance_mark' latest_lesson_id %}">Отметить последний урок</a>
-        {% endif %}
         <a class="crm-btn crm-btn--ghost" href="{% url 'bot:groups' %}">← К списку групп</a>
     </div>
 </section>

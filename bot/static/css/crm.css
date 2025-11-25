@@ -262,6 +262,7 @@ body.crm-ready .crm-nav-button {
     border-radius: 20px;
     overflow: hidden;
     font-size: 0.9rem;
+    
 }
 
 .student-table th,
@@ -293,6 +294,8 @@ body.crm-ready .crm-nav-button {
     align-items: center;
     justify-content: space-between;
     gap: 0.5rem;
+    border-collapse: collapse; /* Объединяет границы ячеек */
+    width: 100%; /* Гарантирует, что таблица занимает всю доступную ширину */
 }
 
 .student-name {
