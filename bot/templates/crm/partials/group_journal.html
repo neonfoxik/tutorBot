@@ -1,0 +1,94 @@
+{% load dict_filters %}
+{% now "Y-m-d" as today %}
+<section class="panel" style="margin-top: 1.25rem;">
+    <div class="panel-header">
+        <p class="panel-title">Журнал посещаемости и домашних заданий</p>
+        {% if latest_lesson_id %}
+            <a class="crm-btn crm-btn--accent" href="{% url 'bot:lesson_attendance_mark' latest_lesson_id %}">Отметить последний урок</a>
+        {% endif %}
+    </div>
+
+    {% if lessons %}
+        <div style="overflow-x: auto;">
+            <table class="journal-table">
+                <thead>
+                    <tr>
+                        <th>Ученик</th>
+                        {% for lesson in lessons %}
+                            <th>
+                                {{ lesson.date|date:"d MMM" }}<br>
+                                <small>{{ lesson.topic|default:"Без темы" }}</small>
+                            </th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for student in current_group.students.all %}
+                        <tr>
+                            <td class="student-label">
+                                <span class="student-name">{{ student.profile_name }}</span>
+                                <a class="homework-link" href="{% url 'bot:student_homework_results' student.id %}">ДЗ</a>
+                            </td>
+                            {% for lesson in lessons %}
+                                {% with att=attendances|get_item:student.id|get_item:lesson.id %}
+                                {% with hw=homeworks|get_item:student.id|get_item:lesson.id %}
+                                {% with lesson_date=lesson.date|stringformat:"Y-m-d" %}
+                                <td>
+                                    <div class="cell-stack">
+                                        {% if lesson_date > today %}
+                                            <span class="status-dot status-dot--upcoming" title="Урок впереди"></span>
+                                        {% elif att %}
+                                            {% if att.status == 'present' %}
+                                                <span class="status-dot status-dot--present" title="Был"></span>
+                                            {% elif att.status == 'absent' %}
+                                                <span class="status-dot status-dot--absent" title="Не был"></span>
+                                            {% else %}
+                                                <span class="status-dot status-dot--excused" title="Уважительная причина"></span>
+                                            {% endif %}
+                                        {% else %}
+                                            <span class="status-dot status-dot--pending" title="Не отмечено"></span>
+                                        {% endif %}
+
+                                        {% if lesson_date > today %}
+                                            <span class="status-dot status-dot--pending" title="ДЗ: ещё есть время"></span>
+                                        {% elif hw %}
+                                            {% if hw.status == 'done' %}
+                                                <span class="status-dot status-dot--hw-done" title="ДЗ выполнено"></span>
+                                            {% elif hw.status == 'not_done' %}
+                                                <span class="status-dot status-dot--hw-fail" title="ДЗ не выполнено"></span>
+                                            {% else %}
+                                                <span class="status-dot status-dot--pending" title="ДЗ нет статуса"></span>
+                                            {% endif %}
+                                        {% else %}
+                                            <span class="status-dot status-dot--hw-none" title="ДЗ не назначено"></span>
+                                        {% endif %}
+                                    </div>
+                                </td>
+                                {% endwith %}
+                                {% endwith %}
+                                {% endwith %}
+                            {% endfor %}
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="{{ lessons|length|add:'1' }}">В группе нет учеников.</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="legend">
+            <div class="legend-item"><span class="status-dot status-dot--present"></span>Был</div>
+            <div class="legend-item"><span class="status-dot status-dot--absent"></span>Не был</div>
+            <div class="legend-item"><span class="status-dot status-dot--excused"></span>Уважительная причина</div>
+            <div class="legend-item"><span class="status-dot status-dot--pending"></span>Не отмечено / ещё есть время</div>
+            <div class="legend-item"><span class="status-dot status-dot--hw-done"></span>ДЗ выполнено</div>
+            <div class="legend-item"><span class="status-dot status-dot--hw-fail"></span>ДЗ не выполнено</div>
+            <div class="legend-item"><span class="status-dot status-dot--hw-none"></span>ДЗ не назначено</div>
+        </div>
+    {% else %}
+        <p style="color: var(--muted);">Пока нет уроков для отображения журнала.</p>
+    {% endif %}
+</section>
+

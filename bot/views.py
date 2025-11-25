@@ -231,12 +231,57 @@ def crm_dashboard(request):
         total_payments=Count('id'),
         total_income=Sum('amount_paid')
     )
+
+    today = timezone.now().date()
+    upcoming_lessons = Lesson.objects.filter(
+        date__gte=today
+    ).select_related(
+        'group'
+    ).order_by('date', 'start_time')[:5]
+
+    attendance_lesson = Lesson.objects.filter(
+        date__gte=today
+    ).select_related(
+        'group'
+    ).order_by('date', 'start_time').first()
+
+    if attendance_lesson is None:
+        attendance_lesson = Lesson.objects.select_related('group').order_by('-date', '-start_time').first()
+
+    attendance_students = []
+    attendance_records = {}
+    attendance_rows = []
+    if attendance_lesson and attendance_lesson.group:
+        attendance_students = attendance_lesson.group.students.filter(is_active=True).order_by('profile_name')
+        attendance_records = {
+            att.student_id: att
+            for att in LessonAttendance.objects.filter(lesson=attendance_lesson, student__in=attendance_students)
+        }
+        attendance_rows = [
+            {
+                'student': student,
+                'attendance': attendance_records.get(student.id)
+            }
+            for student in attendance_students
+        ]
+
+    homework_notifications = ComplexHomework.objects.filter(
+        status='done'
+    ).select_related(
+        'student',
+        'group',
+        'lesson'
+    ).order_by('-lesson__date', '-id')[:6]
     
     context = {
         'total_students': total_students,
         'active_students': active_students,
         'total_payments': payment_stats['total_payments'] or 0,
-        'total_income': payment_stats['total_income'] or 0
+        'total_income': payment_stats['total_income'] or 0,
+        'upcoming_lessons': upcoming_lessons,
+        'attendance_lesson': attendance_lesson,
+        'attendance_rows': attendance_rows,
+        'homework_notifications': homework_notifications,
     }
     
     return render(request, 'crm/dashboard.html', context)
@@ -244,12 +289,52 @@ def crm_dashboard(request):
 
 @staff_member_required
 def groups_list(request):
-    groups = Group.objects.prefetch_related('students', 'teacher').all()
-    # Ученики, у которых нет группы (свободные, для добавления)
+    groups_qs = Group.objects.prefetch_related('students', 'teacher').all()
+    groups = list(groups_qs)
     free_students = StudentProfile.objects.filter(group__isnull=True)
+
+    selected_group = None
+    selected_group_id = request.GET.get('group')
+    if selected_group_id:
+        selected_group = next((g for g in groups if str(g.id) == selected_group_id), None)
+    if selected_group is None and groups:
+        selected_group = groups[0]
+
+    selected_lessons = []
+    selected_attendances = {}
+    selected_homeworks = {}
+    selected_latest_lesson_id = None
+
+    if selected_group:
+        selected_lessons = list(selected_group.lessons.order_by('date'))
+        students = list(selected_group.students.all())
+
+        if selected_lessons and students:
+            att_qs = LessonAttendance.objects.filter(
+                lesson__in=selected_lessons,
+                student__in=students
+            )
+            for att in att_qs:
+                selected_attendances.setdefault(att.student_id, {})[att.lesson_id] = att
+
+            hw_qs = ComplexHomework.objects.filter(
+                lesson__in=selected_lessons,
+                student__in=students
+            )
+            for hw in hw_qs:
+                selected_homeworks.setdefault(hw.student_id, {})[hw.lesson_id] = hw
+
+        if selected_lessons:
+            selected_latest_lesson_id = selected_lessons[-1].id
+
     context = {
         'groups': groups,
         'free_students': free_students,
+        'selected_group': selected_group,
+        'selected_lessons': selected_lessons,
+        'selected_attendances': selected_attendances,
+        'selected_homeworks': selected_homeworks,
+        'selected_latest_lesson_id': selected_latest_lesson_id,
     }
     return render(request, 'crm/groups.html', context)
 
@@ -258,7 +343,7 @@ def groups_list(request):
 def group_detail(request, group_id):
     group = get_object_or_404(Group, id=group_id)
     students = group.students.all()
-    lessons = group.lessons.order_by('date')  # Все занятия этой группы
+    lessons = list(group.lessons.order_by('date'))  # Все занятия этой группы
     # Получаем посещения одним запросом
     att_qs = LessonAttendance.objects.filter(lesson__in=lessons, student__in=students)
     attendances = {}
@@ -276,6 +361,7 @@ def group_detail(request, group_id):
         'lessons': lessons,
         'attendances': attendances,
         'homeworks': homeworks,
+        'latest_lesson_id': lessons[-1].id if lessons else None,
     }
     return render(request, 'crm/group_detail.html', context)
 
@@ -698,11 +784,31 @@ def student_homework_results(request, student_profile_id: int):
     Показывает список всех `Homework` ученика, сгруппированных по урокам и заданиям.
     """
     student = get_object_or_404(StudentProfile, id=student_profile_id)
-    homework = ComplexHomework.objects.filter(student=student)
-    list_hw = list()
-    for hw in homework:
-        list_hw.append(hw)
-        for answer in Homework.objects.filter(complex_homework=hw):
-            list_hw.append(answer)
-    #homeworks = Homework.objects.filter(complex_homework=homework)
-    return render(request, 'tasks/results_student.html', {"student": student, "homeworks": list_hw})
+    complex_items = ComplexHomework.objects.filter(
+        student=student
+    ).select_related(
+        'lesson',
+        'group',
+        'complex_task'
+    ).order_by('-lesson__date', '-id')
+
+    entries = []
+    for hw in complex_items:
+        answers = list(
+            Homework.objects.filter(complex_homework=hw)
+            .select_related('task')
+            .order_by('id')
+        )
+        entries.append({
+            'homework': hw,
+            'answers': answers,
+        })
+
+    return render(
+        request,
+        'crm/homework_results.html',
+        {
+            "student": student,
+            "entries": entries,
+        }
+    )

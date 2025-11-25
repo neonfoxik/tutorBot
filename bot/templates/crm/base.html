@@ -1,0 +1,37 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}TutorBot CRM{% endblock %}</title>
+    <link rel="stylesheet" href="{% static 'css/crm.css' %}">
+    {% block extra_head %}{% endblock %}
+</head>
+<body class="crm-body">
+    <div class="crm-wrapper">
+        <header class="crm-header">
+            <div class="crm-header__content">
+                <a href="{% url 'bot:crm_dashboard' %}" class="crm-logo">TutorBot CRM</a>
+                <nav class="crm-nav">
+                    <a href="{% url 'bot:crm_dashboard' %}" class="{% if request.path == '/bot/crm/' %}is-active{% endif %}">Главная</a>
+                    <a href="{% url 'bot:groups' %}" class="{% if '/bot/groups' in request.path or '/bot/tasks/results' in request.path %}is-active{% endif %}">Группы</a>
+                    <a href="{% url 'bot:payment_info' %}" class="{% if '/bot/payment-info' in request.path %}is-active{% endif %}">Оплаты</a>
+                </nav>
+                <div class="crm-header__actions">
+                    <a href="{% url 'bot:groups' %}" class="crm-btn crm-btn--ghost">К разделам</a>
+                    <a href="{% url 'admin:logout' %}" class="crm-btn crm-btn--accent">Выйти</a>
+                </div>
+            </div>
+        </header>
+
+        <main class="crm-main">
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+
+    <script src="{% static 'js/crm.js' %}" defer></script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>
+

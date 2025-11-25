@@ -1,179 +1,148 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Группы - TutorBot CRM</title>
-    <style>
-        /* Reset CSS */
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+{% extends "crm/base.html" %}
+{% load dict_filters %}
 
-        body {
-            font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background-color: #f5f7fa;
-            color: #2d3748;
-            line-height: 1.6;
-        }
+{% block title %}Группы • TutorBot CRM{% endblock %}
 
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 2rem;
-        }
+{% block content %}
+<section class="panel">
+    <div class="panel-header">
+        <p class="panel-title">Группы</p>
+        <p style="color: var(--muted); font-size: 0.9rem;">Выберите группу, чтобы увидеть журнал и отметить посещаемость.</p>
+    </div>
 
-        .header {
-            background-color: #ffffff;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-            padding: 1rem 0;
-            margin-bottom: 2rem;
-        }
-
-        .header-content {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 0 2rem;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .logo {
-            font-size: 1.5rem;
-            font-weight: 700;
-            color: #2d3748;
-            text-decoration: none;
-        }
-
-        .nav-links {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-        }
-
-        .btn {
-            padding: 0.5rem 1rem;
-            background-color: #4299e1;
-            color: white;
-            border: none;
-            border-radius: 0.375rem;
-            cursor: pointer;
-            text-decoration: none;
-            font-size: 0.875rem;
-            display: inline-block;
-        }
-
-        .btn:hover {
-            background-color: #3182ce;
-        }
-
-        .btn-secondary {
-            background-color: #718096;
-        }
-
-        .btn-secondary:hover {
-            background-color: #4a5568;
-        }
-    </style>
-</head>
-<body>
-    <header class="header">
-        <div class="header-content">
-            <a href="{% url 'bot:crm_dashboard' %}" class="logo">TutorBot CRM</a>
-            <div class="nav-links">
-                <a href="{% url 'bot:crm_dashboard' %}" class="btn btn-secondary">← На главную</a>
-                <a href="{% url 'admin:logout' %}" class="btn" style="background-color: #e53e3e;">Выйти</a>
-            </div>
+    <div class="groups-layout">
+        <div class="groups-grid">
+            {% for group in groups %}
+                <article class="group-card{% if selected_group and group.id == selected_group.id %} is-active{% endif %}">
+                    <div>
+                        <p class="group-card__title">{{ group.name }}</p>
+                        <p class="group-card__meta">Преподаватель: {{ group.teacher }}</p>
+                    </div>
+                    <div class="group-card__footer">
+                        <span>{{ group.students.count }} учеников</span>
+                        <a href="?group={{ group.id }}">Перейти</a>
+                    </div>
+                </article>
+            {% empty %}
+                <p>Групп не найдено.</p>
+            {% endfor %}
         </div>
-    </header>
 
-    <main class="container">
-        <h1>Группы</h1>
-        <div>
-          {% for group in groups %}
-            <details style="margin-bottom: 1.5rem;">
-              <summary style="font-size: 1.2rem; font-weight: bold;">
-                {{ group.name }} (преподаватель: {{ group.teacher }})
-              </summary>
-              <table border="1" cellpadding="5" style="margin-top: 1rem; width: 100%;">
-                <tr>
-                  <th>Имя</th>
-                  <th>Класс</th>
-                  <th>Действия</th>
-                </tr>
-                {% for student in group.students.all %}
-                <tr>
-                  <td>{{ student.profile_name }}</td>
-                  <td>{{ student.class_number }}</td>
-                  <td>
-                    <form method="post" action="{% url 'bot:group_remove_student' group.id student.id %}" style="display:inline;" onsubmit="return confirm('Удалить ученика из группы?');">
-                      {% csrf_token %}
-                      <button type="submit">Удалить</button>
+        <div class="detail-panel">
+            {% if selected_group %}
+                <div class="detail-panel__header">
+                    <div>
+                        <h2 class="group-card__title" style="margin-bottom: 0.25rem;">{{ selected_group.name }}</h2>
+                        <p class="group-card__meta">Преподаватель: {{ selected_group.teacher }}</p>
+                    </div>
+                    <a href="{% url 'bot:group_detail' selected_group.id %}" class="crm-btn crm-btn--secondary">Открыть отдельно</a>
+                </div>
+
+                <section style="margin-bottom: 1.25rem;">
+                    <div class="panel-header" style="padding: 0;">
+                        <p class="panel-title" style="font-size: 1rem;">Ученики группы</p>
+                    </div>
+                    <table class="student-table">
+                        <thead>
+                            <tr>
+                                <th>Ученик</th>
+                                <th>Класс</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for student in selected_group.students.all %}
+                                <tr>
+                                    <td class="student-label">
+                                        <span class="student-name">{{ student.profile_name }}</span>
+                                        <a class="homework-link" href="{% url 'bot:student_homework_results' student.id %}">ДЗ</a>
+                                    </td>
+                                    <td>{{ student.class_number|default:"—" }}</td>
+                                    <td>
+                                        <form method="post" action="{% url 'bot:group_remove_student' selected_group.id student.id %}" onsubmit="return confirm('Удалить ученика из группы?');">
+                                            {% csrf_token %}
+                                            <button type="submit" class="secondary">Удалить</button>
+                                        </form>
+                                    </td>
+                                </tr>
+                            {% empty %}
+                                <tr>
+                                    <td colspan="3">В группе пока нет учеников.</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+
+                    <form class="inline-form" method="post" action="{% url 'bot:group_add_student' selected_group.id %}" style="margin-top: 0.75rem;">
+                        {% csrf_token %}
+                        <select name="student_id" required>
+                            <option value="" selected disabled>Добавить ученика</option>
+                            {% for student in free_students %}
+                                <option value="{{ student.id }}">{{ student.profile_name }}</option>
+                            {% endfor %}
+                        </select>
+                        <button type="submit" onclick="return confirm('Добавить ученика в группу?');">Добавить</button>
                     </form>
-                  </td>
+                </section>
+
+                {% include "crm/partials/group_journal.html" with current_group=selected_group lessons=selected_lessons attendances=selected_attendances homeworks=selected_homeworks latest_lesson_id=selected_latest_lesson_id %}
+            {% else %}
+                <p style="color: var(--muted);">Выберите группу слева, чтобы увидеть подробности.</p>
+            {% endif %}
+        </div>
+    </div>
+</section>
+
+<section class="panel free-panel">
+    <div class="panel-header">
+        <p class="panel-title">Ученики без групп</p>
+    </div>
+    {% if free_students %}
+        <table class="student-table">
+            <thead>
+                <tr>
+                    <th>Ученик</th>
+                    <th>Класс</th>
+                    <th></th>
                 </tr>
+            </thead>
+            <tbody>
+                {% for student in free_students %}
+                    <tr>
+                        <td>{{ student.profile_name }}</td>
+                        <td>{{ student.class_number|default:"—" }}</td>
+                        <td>
+                            <form method="post" id="add-student-form-{{ student.id }}" class="inline-form" onsubmit="return confirm('Добавить ученика в выбранную группу?');">
+                                {% csrf_token %}
+                                <input type="hidden" name="student_id" value="{{ student.id }}">
+                                <select name="group_id" required onchange="updateFormAction({{ student.id }}, this.value)">
+                                    <option value="" selected disabled>Выберите группу</option>
+                                    {% for group in groups %}
+                                        <option value="{{ group.id }}">{{ group.name }}</option>
+                                    {% endfor %}
+                                </select>
+                                <button type="submit">Добавить</button>
+                            </form>
+                        </td>
+                    </tr>
                 {% endfor %}
-              </table>
-              <form method="post" action="{% url 'bot:group_add_student' group.id %}">
-                {% csrf_token %}
-                <select name="student_id">
-                  {% for student in free_students %}
-                    <option value="{{ student.id }}">{{ student.profile_name }}</option>
-                  {% endfor %}
-                </select>
-                <button type="submit" onclick="return confirm('Добавить ученика в группу?');">Добавить</button>
-              </form>
-              <div style="margin-top:0.5rem;">
-                <a href="{% url 'bot:group_detail' group.id %}">Подробнее о группе</a>
-              </div>
-            </details>
-          {% empty %}
-            <p>Групп не найдено.</p>
-          {% endfor %}
-          <h2>Ученики без групп</h2>
-          {% if free_students %}
-            <table border="1" cellpadding="5" style="margin-top: 1rem; width: 100%;">
-              <tr>
-                <th>Имя</th>
-                <th>Класс</th>
-                <th>Действия</th>
-              </tr>
-              {% for student in free_students %}
-                <tr>
-                  <td>{{ student.profile_name }}</td>
-                  <td>{{ student.class_number|default:"—" }}</td>
-                  <td>
-                    <form method="post" id="add-student-form-{{ student.id }}" onsubmit="return confirm('Добавить ученика в выбранную группу?');">
-                      {% csrf_token %}
-                      <input type="hidden" name="student_id" value="{{ student.id }}">
-                      <select name="group_id" required onchange="updateFormAction({{ student.id }}, this.value)">
-                        <option value="" selected disabled>Выберите группу</option>
-                        {% for group in groups %}
-                          <option value="{{ group.id }}">{{ group.name }}</option>
-                        {% endfor %}
-                      </select>
-                      <button type="submit">Добавить</button>
-                    </form>
-                  </td>
-                </tr>
-              {% endfor %}
-            </table>
-          {% else %}
-            <p>Все ученики уже распределены по группам.</p>
-          {% endif %}
-        </div>
-    </main>
+            </tbody>
+        </table>
+    {% else %}
+        <p>Все ученики закреплены за группами.</p>
+    {% endif %}
+</section>
+{% endblock %}
 
-    <script>
+{% block extra_js %}
+<script>
     function updateFormAction(studentId, groupId) {
-      if (groupId) {
-        const form = document.getElementById('add-student-form-' + studentId);
-        form.action = "{% url 'bot:group_add_student' 0 %}".replace('0', groupId);
-      }
+        if (groupId) {
+            const form = document.getElementById('add-student-form-' + studentId);
+            if (form) {
+                form.action = "{% url 'bot:group_add_student' 0 %}".replace('0', groupId);
+            }
+        }
     }
-    </script>
-</body>
-</html>
+</script>
+{% endblock %}

@@ -1,0 +1,70 @@
+{% extends "crm/base.html" %}
+
+{% block title %}ДЗ {{ student.profile_name }} • TutorBot CRM{% endblock %}
+
+{% block content %}
+<section class="hero-card">
+    <div>
+        <p class="hero-title">{{ student.profile_name }}</p>
+        <p class="hero-meta">
+            {% if student.group %}Группа: {{ student.group.name }}{% else %}Не в группе{% endif %}
+            {% if student.class_number %} · Класс: {{ student.class_number }}{% endif %}
+        </p>
+    </div>
+    <div class="lesson-stats">
+        <span class="chip">ДЗ: {{ entries|length }}</span>
+        <span class="chip">Профиль: {{ student.user.username }}</span>
+    </div>
+</section>
+
+{% if entries %}
+    <div class="homework-grid">
+        {% for entry in entries %}
+            <article class="homework-card">
+                <div class="homework-card__header">
+                    <div>
+                        <p class="homework-card__title">
+                            {{ entry.homework.lesson.date|date:"d M" }}
+                        </p>
+                        <p class="homework-card__meta">
+                            {% if entry.homework.group %}
+                                {{ entry.homework.group.name }}
+                            {% else %}
+                                Без группы
+                            {% endif %}
+                        </p>
+                    </div>
+                    <span class="status-chip {% if entry.homework.status == 'done' %}status-chip--done{% else %}status-chip--fail{% endif %}">
+                        {% if entry.homework.status == 'done' %}Выполнено{% else %}Не выполнено{% endif %}
+                    </span>
+                </div>
+                {% if entry.homework.complex_task %}
+                    <p class="homework-card__meta">Задание: {{ entry.homework.complex_task.title }}</p>
+                {% endif %}
+                <div class="answer-list">
+                    {% for answer in entry.answers %}
+                        <div class="answer-item">
+                            <div>
+                                <p class="answer-task">{{ answer.task.title|default:"Задание" }}</p>
+                                {% if answer.answer_text %}
+                                    <p class="answer-text">{{ answer.answer_text }}</p>
+                                {% endif %}
+                            </div>
+                            <span class="answer-status {% if answer.status == 'done' %}answer-status--done{% elif answer.status == 'not_done' %}answer-status--fail{% else %}answer-status--pending{% endif %}">
+                                {{ answer.get_status_display }}
+                            </span>
+                        </div>
+                    {% empty %}
+                        <p class="homework-card__meta">Ответы ещё не отправлены.</p>
+                    {% endfor %}
+                </div>
+            </article>
+        {% endfor %}
+    </div>
+{% else %}
+    <section class="panel">
+        <p style="color: var(--muted);">Для ученика ещё не назначались домашние задания.</p>
+    </section>
+{% endif %}
+{% endblock %}
+
