@@ -257,12 +257,13 @@ body.crm-ready .crm-nav-button {
 .student-table,
 .journal-table {
     width: 100%;
-    border-collapse: collapse;
+    border-collapse: collapse; /* Ключевое свойство: убирает двойные границы, делает линии едиными */
+    margin-top: 15px;
+    background-color: #fff;
     border: 1px solid var(--border);
-    border-radius: 20px;
-    overflow: hidden;
-    font-size: 0.9rem;
-    
+    border-radius: 20px; /* Использует ваш радиус */
+    overflow: hidden; /* Чтобы скругление работало на углах таблицы */
+    font-size: 0.9rem; /* Стиль, который уже есть у вас */
 }
 
 .student-table th,
@@ -273,6 +274,8 @@ body.crm-ready .crm-nav-button {
     border-bottom: 1px solid var(--border);
     text-align: left;
     background: #fff;
+    vertical-align: middle;
+    border-collapse: collapse;
 }
 
 .student-table th,
@@ -282,6 +285,7 @@ body.crm-ready .crm-nav-button {
     font-size: 0.75rem;
     letter-spacing: 0.08em;
     color: var(--muted);
+    border-collapse: collapse;
 }
 
 .journal-table tr:last-child td,
@@ -291,10 +295,12 @@ body.crm-ready .crm-nav-button {
 
 .student-label {
     display: flex;
+    text-align: left;
     align-items: center;
     justify-content: space-between;
+    white-space: nowrap;
+    border-collapse: collapse;
     gap: 0.5rem;
-    border-collapse: collapse; /* Объединяет границы ячеек */
     width: 100%; /* Гарантирует, что таблица занимает всю доступную ширину */
 }
 
@@ -408,8 +414,9 @@ body.crm-ready .crm-nav-button {
     display: flex;
     flex-direction: column;
     gap: 0.4rem;
-    align-items: flex-start;
-    min-height: 40px;
+    align-items: middle;
+    justify-content: middle;
+    border-collapse: collapse;
 }
 
 .status-dot {
@@ -552,6 +559,7 @@ body.crm-ready .crm-nav-button {
 
     .journal-table {
         display: block;
+        border-collapse: collapse;
         overflow-x: auto;
     }
 }

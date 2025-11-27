@@ -16,11 +16,18 @@ Including another URLconf
 from django.contrib import admin
 from django.conf import settings
 from django.conf.urls.static import static
+from django.contrib.auth import views as auth_views
 from django.urls import path, include
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('bot/', include('bot.urls', namespace='bot'))
+    path('bot/', include('bot.urls', namespace='bot')),
+    # URL для страницы входа (Login)
+    # Использует встроенный LoginView
+    path('login/', auth_views.LoginView.as_view(template_name='registration/login.html'), name='login'),
+    # URL для выхода (Logout)
+    # Использует встроенный LogoutView
+    path('logout/', auth_views.LogoutView.as_view(), name='logout'),
 ]
 
 if settings.DEBUG:

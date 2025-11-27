@@ -19,7 +19,14 @@
                     <a href="{% url 'bot:payment_info' %}" class="{% if '/bot/payment-info' in request.path %}is-active{% endif %}">Оплаты</a>
                 </nav>
                 <div class="crm-header__actions">
-                    <a href="{% url 'admin:logout' %}" class="crm-btn crm-btn--accent">Выйти</a>
+                {% if user.is_authenticated %}
+                <form action="{% url 'logout' %}" method="post">
+                    {% csrf_token %}
+                    <button type="submit" class="crm-btn crm-btn--accent">Выйти</button>
+                </form>
+                {% else %}
+                    <a href="{% url 'login' %}" class="crm-btn crm-btn--accent">Войти</a>    
+                {% endif %}
                 </div>
             </div>
         </header>

@@ -120,6 +120,14 @@
             gap: 15px;
         }
 
+        .crm-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.35rem; /* Расстояние между иконкой и текстом */
+            vertical-align: middle;
+        }
+
         .back-btn {
             display: flex;
             align-items: center;
