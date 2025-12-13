@@ -44,7 +44,7 @@ from bot.handlers.payments import (
     notify_admins_about_payment
 )
 
-from .models import PaymentHistory, User, StudentProfile
+from .models import Payment, PaymentHistory, User, StudentProfile
 
 
 # Регистрируем обработчики команд
@@ -117,51 +117,87 @@ def payment_info(request):
         if course != "*":
             all_profiles = all_profiles.filter(class_number=course)
 
-    years = set(PaymentHistory.objects.values_list('year', flat=True))
+    # Получаем все года из PaymentHistory И из Payment (на случай если webhook не обработался)
+    years_from_history = set(PaymentHistory.objects.values_list('year', flat=True))
+    years_from_payments = set(Payment.objects.filter(status='succeeded').values_list('payment_year', flat=True))
+    years = years_from_history | years_from_payments
     if len(years) == 0:
         years = [datetime.now().year]
+
     all_info = []
     total_income = 0
-    for year in years:
+
+    for year in sorted(years, reverse=True):  # Сортируем года по убыванию
         year_info = {
             'date': year,
             'months': [
-            {'title': 'Декабрь', 'id': 12, 'paid_users': [], 'unpaid_users': [], 'payers_count': 0, 'all_users': 0, 'is_paid': False},
-            {'title': 'Ноябрь', 'id': 11, 'paid_users': [], 'unpaid_users': [], 'payers_count': 0, 'all_users': 0, 'is_paid': False}, 
-            {'title': 'Октябрь', 'id': 10, 'paid_users': [], 'unpaid_users': [], 'payers_count': 0, 'all_users': 0, 'is_paid': False}, 
-            {'title': 'Сентябрь', 'id': 9, 'paid_users': [], 'unpaid_users': [], 'payers_count': 0, 'all_users': 0, 'is_paid': False}, 
-            {'title': 'Август', 'id': 8, 'paid_users': [], 'unpaid_users': [], 'payers_count': 0, 'all_users': 0, 'is_paid': False}, 
-            {'title': 'Июль', 'id': 7, 'paid_users': [], 'unpaid_users': [], 'payers_count': 0, 'all_users': 0, 'is_paid': False}, 
-            {'title': 'Июнь', 'id': 6, 'paid_users': [], 'unpaid_users': [], 'payers_count': 0, 'all_users': 0, 'is_paid': False}, 
-            {'title': 'Май', 'id': 5, 'paid_users': [], 'unpaid_users': [], 'payers_count': 0, 'all_users': 0, 'is_paid': False},
-            {'title': 'Апрель', 'id': 4, 'paid_users': [], 'unpaid_users': [], 'payers_count': 0, 'all_users': 0, 'is_paid': False}, 
-            {'title': 'Март', 'id': 3, 'paid_users': [], 'unpaid_users': [], 'payers_count': 0, 'all_users': 0, 'is_paid': False}, 
-            {'title': 'Февраль', 'id': 2, 'paid_users': [], 'unpaid_users': [], 'payers_count': 0, 'all_users': 0, 'is_paid': False}, 
-            {'title': 'Январь', 'id': 1, 'paid_users': [], 'unpaid_users': [], 'payers_count': 0, 'all_users': 0, 'is_paid': False}, 
-        ]}
+                {'title': 'Декабрь', 'id': 12, 'paid_users': [], 'unpaid_users': [], 'payers_count': 0, 'all_users': 0, 'is_paid': False},
+                {'title': 'Ноябрь', 'id': 11, 'paid_users': [], 'unpaid_users': [], 'payers_count': 0, 'all_users': 0, 'is_paid': False},
+                {'title': 'Октябрь', 'id': 10, 'paid_users': [], 'unpaid_users': [], 'payers_count': 0, 'all_users': 0, 'is_paid': False},
+                {'title': 'Сентябрь', 'id': 9, 'paid_users': [], 'unpaid_users': [], 'payers_count': 0, 'all_users': 0, 'is_paid': False},
+                {'title': 'Август', 'id': 8, 'paid_users': [], 'unpaid_users': [], 'payers_count': 0, 'all_users': 0, 'is_paid': False},
+                {'title': 'Июль', 'id': 7, 'paid_users': [], 'unpaid_users': [], 'payers_count': 0, 'all_users': 0, 'is_paid': False},
+                {'title': 'Июнь', 'id': 6, 'paid_users': [], 'unpaid_users': [], 'payers_count': 0, 'all_users': 0, 'is_paid': False},
+                {'title': 'Май', 'id': 5, 'paid_users': [], 'unpaid_users': [], 'payers_count': 0, 'all_users': 0, 'is_paid': False},
+                {'title': 'Апрель', 'id': 4, 'paid_users': [], 'unpaid_users': [], 'payers_count': 0, 'all_users': 0, 'is_paid': False},
+                {'title': 'Март', 'id': 3, 'paid_users': [], 'unpaid_users': [], 'payers_count': 0, 'all_users': 0, 'is_paid': False},
+                {'title': 'Февраль', 'id': 2, 'paid_users': [], 'unpaid_users': [], 'payers_count': 0, 'all_users': 0, 'is_paid': False},
+                {'title': 'Январь', 'id': 1, 'paid_users': [], 'unpaid_users': [], 'payers_count': 0, 'all_users': 0, 'is_paid': False},
+            ]
+        }
 
         for month in year_info['months']:
+            month['all_users'] = 0
+            month['paid_users'] = []
+            month['unpaid_users'] = []
+
             for profile in all_profiles:
-                # учитываем дату регистрации профиля
-                if profile.register_date.month <= month['id']:
+                # учитываем дату регистрации профиля - показываем только тех, кто был зарегистрирован к этому месяцу
+                if profile.register_date.year < year or (profile.register_date.year == year and profile.register_date.month <= month['id']):
+                    month['all_users'] += 1
+
+                    # Проверяем оплату в PaymentHistory
                     ph_qs = PaymentHistory.objects.filter(
                         month=month["id"],
                         year=year,
                         user=profile.user,
                         student_profile=profile,
+                        status='completed'
                     )
-                    if ph_qs.exists():
+
+                    # Также проверяем успешные платежи в Payment (на случай если webhook не обработался)
+                    payment_qs = Payment.objects.filter(
+                        payment_month=month["id"],
+                        payment_year=year,
+                        user=profile.user,
+                        student_profile=profile,
+                        status='succeeded'
+                    )
+
+                    if ph_qs.exists() or payment_qs.exists():
                         month['payers_count'] += 1
                         month['is_paid'] = True
-                        payment_record = ph_qs.first()
+
+                        # Предпочитаем PaymentHistory, но если его нет, используем Payment
+                        if ph_qs.exists():
+                            payment_record = ph_qs.first()
+                        else:
+                            payment_obj = payment_qs.first()
+                            # Создаем временный объект, похожий на PaymentHistory для шаблона
+                            class TempPaymentRecord:
+                                def __init__(self, payment_obj, profile):
+                                    self.student_profile = profile
+                                    self.amount_paid = payment_obj.amount
+                                    self.pricing_plan = payment_obj.pricing_plan
+                            payment_record = TempPaymentRecord(payment_obj, profile)
+
                         month['paid_users'].append(payment_record)
                         total_income += payment_record.amount_paid
                     else:
                         month['unpaid_users'].append(profile)
 
-                month['all_users'] += 1
-            month['all_students'] = month['paid_users'] + month['unpaid_users']
         all_info.append(year_info)
+
     return render(request, 'templates_info.html', context={
         'all_info': all_info,
         'now_year': datetime.now().year,
@@ -210,6 +246,45 @@ def set_webhook(request: HttpRequest) -> JsonResponse:
 @require_GET
 def status(request: HttpRequest) -> JsonResponse:
     return JsonResponse({"message": "OK"}, status=200)
+
+
+@csrf_exempt
+@require_POST
+def yookassa_webhook(request):
+    """
+    Обработчик webhook уведомлений от ЮKassa
+    """
+    try:
+        # Получаем данные из POST запроса
+        webhook_data = json.loads(request.body.decode('utf-8'))
+
+        logger.info(f"Получен webhook от ЮKassa: {webhook_data}")
+
+        # Обрабатываем webhook через функцию из yookassa_client
+        from bot.yookassa_client import process_webhook
+        success = process_webhook(webhook_data)
+
+        if success:
+            # Если платеж успешно обработан, отправляем уведомления
+            event_type = webhook_data.get('event')
+            if event_type == 'payment.succeeded':
+                payment_id = webhook_data.get('object', {}).get('id')
+                if payment_id:
+                    # Вызываем функцию отправки уведомлений
+                    from bot.handlers.payments import notify_payment_success
+                    notify_payment_success(payment_id)
+
+            return JsonResponse({"status": "ok"}, status=200)
+        else:
+            logger.error("Ошибка обработки webhook от ЮKassa")
+            return JsonResponse({"status": "error", "message": "Failed to process webhook"}, status=400)
+
+    except json.JSONDecodeError:
+        logger.error("Неверный JSON в webhook от ЮKassa")
+        return JsonResponse({"status": "error", "message": "Invalid JSON"}, status=400)
+    except Exception as e:
+        logger.error(f"Ошибка при обработке webhook: {e}")
+        return JsonResponse({"status": "error", "message": str(e)}, status=500)
 
 
 @staff_member_required

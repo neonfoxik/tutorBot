@@ -362,26 +362,35 @@ def process_webhook(webhook_data):
         if event_type == 'payment.succeeded':
             # Платеж успешно завершен
             payment_id = payment_data.get('id')
-            
+
             # Здесь нужно обновить статус платежа в базе данных
             from .models import Payment, PaymentHistory
-            
+
             try:
                 payment = Payment.objects.get(yookassa_payment_id=payment_id)
                 payment.status = 'succeeded'
                 payment.payment_method = payment_data.get('payment_method', {})
                 payment.save()
-                
-                # Создаем запись в истории оплат
-                PaymentHistory.objects.create(
+
+                # Создаем запись в истории оплат только если её ещё нет
+                if not PaymentHistory.objects.filter(
                     user=payment.user,
                     payment=payment,
                     month=payment.payment_month,
-                    year=payment.payment_year,
-                    amount_paid=payment.amount,
-                    pricing_plan=payment.pricing_plan
-                )
-                
+                    year=payment.payment_year
+                ).exists():
+                    PaymentHistory.objects.create(
+                        user=payment.user,
+                        student_profile=payment.student_profile,
+                        payment=payment,
+                        month=payment.payment_month,
+                        year=payment.payment_year,
+                        amount_paid=payment.amount,
+                        pricing_plan=payment.pricing_plan,
+                        payment_type='card',
+                        status='completed'
+                    )
+
                 return True
             except Payment.DoesNotExist:
                 print(f"Платеж {payment_id} не найден в базе данных")
