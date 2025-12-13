@@ -73,44 +73,47 @@ def payment_method(call: CallbackQuery) -> None:
 def payment_menu(call: CallbackQuery) -> None:
     """Показывает меню оплаты"""
     from bot.handlers.registration import start_registration
-    
+
     telegram_id = str(call.from_user.id)
-    
+
     try:
         # Проверяем, есть ли пользователь в базе
         user = User.objects.get(telegram_id=telegram_id)
-        
+
         # Проверяем, есть ли у пользователя хотя бы один профиль
         if not user.student_profiles.exists():
             # Если нет профилей, отправляем на регистрацию
             bot.answer_callback_query(call.id, "⚠️ Для оплаты необходимо пройти регистрацию")
             start_registration(call.message)
             return
-        
+
+        # Автоматически проверяем статус незавершенных платежей пользователя
+        check_pending_payments(user)
+
         # Получаем активный профиль
         active_profile = user.student_profiles.filter(is_active=True).first()
         if not active_profile:
             bot.answer_callback_query(call.id, "❌ У вас нет активного профиля")
             return
-            
+
         # Получаем цену занятия для ученика с учетом уровня образования
         class_key = active_profile.class_number
         if active_profile.education_level:
             if active_profile.class_number in ['10', '11']:
                 class_key = f"{active_profile.class_number}_{active_profile.education_level}"
-        
+
         price_info = get_price_by_class(class_key)
-        
+
         if not price_info:
             bot.answer_callback_query(call.id, "❌ Не удалось определить тариф для вашего класса")
             return
-            
+
         lesson_price = price_info['price']
         class_name = price_info['name']
         description = price_info['description']
-        
+
         markup = generate_payment_menu_keyboard()
-        
+
         text = f"💳 Меню оплаты\n\n"
         text += f"👤 Профиль: {active_profile.profile_name}\n"
         text += f"📚 Класс: {active_profile.class_number}\n"
@@ -120,7 +123,7 @@ def payment_menu(call: CallbackQuery) -> None:
         text += f"💵 Стоимость: {lesson_price} ₽\n"
         text += f"💳 Баланс: {active_profile.balance} ₽\n\n"
         text += f"Выберите действие:"
-        
+
         try:
             bot.edit_message_text(
                 chat_id=call.message.chat.id,
@@ -131,7 +134,7 @@ def payment_menu(call: CallbackQuery) -> None:
         except Exception as e:
             print(f"Error editing message: {e}")
             bot.answer_callback_query(call.id, "❌ Произошла ошибка")
-            
+
     except User.DoesNotExist:
         bot.answer_callback_query(call.id, "⚠️ Для оплаты необходимо пройти регистрацию")
         start_registration(call.message)
@@ -513,7 +516,11 @@ def check_payment(call: CallbackQuery) -> None:
         month = int(call.data.split('_')[3])
         year = int(call.data.split('_')[4])
 
+        logger.info(f"Проверка платежа: payment_id={payment_id}, month={month}, year={year}")
+
         payment = Payment.objects.get(yookassa_payment_id=payment_id)
+
+        logger.info(f"Найден платеж в БД: status={payment.status}, amount={payment.amount}")
 
         # Если платеж уже отмечен как успешный в нашей БД
         if payment.status == 'succeeded':
@@ -540,9 +547,12 @@ def check_payment(call: CallbackQuery) -> None:
 
             try:
                 # Получаем информацию о платеже от ЮKassa
+                logger.info(f"Запрашиваем статус платежа {payment_id} у ЮKassa")
                 payment_info = client.get_payment(payment_id)
+                logger.info(f"Ответ от ЮKassa: {payment_info}")
 
                 if payment_info and payment_info.get('status') == 'succeeded':
+                    logger.info(f"Платеж {payment_id} успешно оплачен - обновляем БД")
                     # Платеж успешно оплачен - обновляем статус и создаем запись в истории
                     payment.status = 'succeeded'
                     payment.payment_method = payment_info.get('payment_method', {})
@@ -741,6 +751,78 @@ def notify_payment_success(payment_id: str) -> None:
         
     except Payment.DoesNotExist:
         pass
+
+
+def check_pending_payments(user: User) -> None:
+    """Проверяет статус всех незавершенных платежей пользователя"""
+    try:
+        # Находим все платежи пользователя со статусом pending или waiting_for_capture
+        pending_payments = Payment.objects.filter(
+            user=user,
+            status__in=['pending', 'waiting_for_capture']
+        )
+
+        if not pending_payments.exists():
+            return
+
+        logger.info(f"Найдено {pending_payments.count()} незавершенных платежей для пользователя {user.telegram_id}")
+
+        from bot.yookassa_client import YooKassaClient
+        client = YooKassaClient()
+
+        updated_count = 0
+        for payment in pending_payments:
+            try:
+                # Получаем актуальный статус от ЮKassa
+                payment_info = client.get_payment(payment.yookassa_payment_id)
+
+                if payment_info:
+                    new_status = payment_info.get('status')
+
+                    if new_status == 'succeeded' and payment.status != 'succeeded':
+                        # Платеж успешно завершен - обновляем БД
+                        payment.status = 'succeeded'
+                        payment.payment_method = payment_info.get('payment_method', {})
+                        payment.save()
+
+                        # Создаем запись в истории платежей, если её нет
+                        if not PaymentHistory.objects.filter(
+                            user=payment.user,
+                            payment=payment,
+                            month=payment.payment_month,
+                            year=payment.payment_year
+                        ).exists():
+                            PaymentHistory.objects.create(
+                                user=payment.user,
+                                student_profile=payment.student_profile,
+                                payment=payment,
+                                month=payment.payment_month,
+                                year=payment.payment_year,
+                                amount_paid=payment.amount,
+                                pricing_plan=payment.pricing_plan,
+                                payment_type='card',
+                                status='completed'
+                            )
+
+                        # Отправляем уведомления
+                        notify_payment_success(payment.yookassa_payment_id)
+                        updated_count += 1
+                        logger.info(f"Платеж {payment.yookassa_payment_id} обновлен на succeeded")
+
+                    elif new_status == 'canceled' and payment.status != 'canceled':
+                        # Платеж отменен
+                        payment.status = 'canceled'
+                        payment.save()
+                        logger.info(f"Платеж {payment.yookassa_payment_id} обновлен на canceled")
+
+            except Exception as e:
+                logger.error(f"Ошибка при проверке платежа {payment.yookassa_payment_id}: {e}")
+
+        if updated_count > 0:
+            logger.info(f"Обновлено {updated_count} платежей для пользователя {user.telegram_id}")
+
+    except Exception as e:
+        logger.error(f"Ошибка в check_pending_payments для пользователя {user.telegram_id}: {e}")
 
 
 def notify_admins_about_payment(user: User, profile: 'StudentProfile', month: int, year: int, amount: float, payment_type: str) -> None:
