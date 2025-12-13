@@ -512,9 +512,10 @@ def check_payment(call: CallbackQuery) -> None:
         payment_id = call.data.split('_')[2]
         month = int(call.data.split('_')[3])
         year = int(call.data.split('_')[4])
-        
+
         payment = Payment.objects.get(yookassa_payment_id=payment_id)
-        
+
+        # Если платеж уже отмечен как успешный в нашей БД
         if payment.status == 'succeeded':
             # Платеж уже проведен
             text = f"✅ Оплата успешно выполнена!\n\n"
@@ -523,9 +524,9 @@ def check_payment(call: CallbackQuery) -> None:
             text += f"📊 Уровень: {payment.student_profile.get_education_level_display() or 'Не указан'}\n"
             text += f"📅 Период: {month:02d}.{year}\n"
             text += f"💵 Сумма: {payment.amount} ₽"
-            
+
             markup = generate_payment_menu_keyboard()
-            
+
             bot.edit_message_text(
                 chat_id=call.message.chat.id,
                 text=text,
@@ -533,10 +534,76 @@ def check_payment(call: CallbackQuery) -> None:
                 message_id=call.message.message_id
             )
         else:
-            bot.answer_callback_query(call.id, "❌ Платеж еще не проведен")
+            # Проверяем актуальный статус у ЮKassa
+            from bot.yookassa_client import YooKassaClient
+            client = YooKassaClient()
+
+            try:
+                # Получаем информацию о платеже от ЮKassa
+                payment_info = client.get_payment(payment_id)
+
+                if payment_info and payment_info.get('status') == 'succeeded':
+                    # Платеж успешно оплачен - обновляем статус и создаем запись в истории
+                    payment.status = 'succeeded'
+                    payment.payment_method = payment_info.get('payment_method', {})
+                    payment.save()
+
+                    # Создаем запись в истории платежей, если её нет
+                    from bot.models import PaymentHistory
+                    if not PaymentHistory.objects.filter(
+                        user=payment.user,
+                        payment=payment,
+                        month=payment.payment_month,
+                        year=payment.payment_year
+                    ).exists():
+                        PaymentHistory.objects.create(
+                            user=payment.user,
+                            student_profile=payment.student_profile,
+                            payment=payment,
+                            month=payment.payment_month,
+                            year=payment.payment_year,
+                            amount_paid=payment.amount,
+                            pricing_plan=payment.pricing_plan,
+                            payment_type='card',
+                            status='completed'
+                        )
+
+                    # Отправляем уведомления
+                    notify_payment_success(payment_id)
+
+                    # Показываем успешное сообщение
+                    text = f"✅ Оплата успешно выполнена!\n\n"
+                    text += f"👤 Профиль: {payment.student_profile.profile_name}\n"
+                    text += f"📚 Класс: {payment.student_profile.class_number}\n"
+                    text += f"📊 Уровень: {payment.student_profile.get_education_level_display() or 'Не указан'}\n"
+                    text += f"📅 Период: {month:02d}.{year}\n"
+                    text += f"💵 Сумма: {payment.amount} ₽"
+
+                    markup = generate_payment_menu_keyboard()
+
+                    bot.edit_message_text(
+                        chat_id=call.message.chat.id,
+                        text=text,
+                        reply_markup=markup,
+                        message_id=call.message.message_id
+                    )
+                elif payment_info and payment_info.get('status') == 'canceled':
+                    # Платеж отменен
+                    payment.status = 'canceled'
+                    payment.save()
+                    bot.answer_callback_query(call.id, "❌ Платеж был отменен")
+                else:
+                    # Платеж еще в обработке
+                    bot.answer_callback_query(call.id, "⏳ Платеж находится в обработке. Попробуйте позже.")
+
+            except Exception as e:
+                logger.error(f"Ошибка при проверке статуса платежа у ЮKassa: {e}")
+                bot.answer_callback_query(call.id, "❌ Не удалось проверить статус платежа. Попробуйте позже.")
+
     except Payment.DoesNotExist:
         bot.answer_callback_query(call.id, "❌ Платеж не найден")
     except Exception as e:
+        logger.error(f"Ошибка в check_payment: {e}")
         bot.answer_callback_query(call.id, "❌ Произошла ошибка")
 
 
@@ -617,19 +684,25 @@ def notify_payment_success(payment_id: str) -> None:
     """Уведомляет пользователя об успешной оплате"""
     try:
         payment = Payment.objects.get(yookassa_payment_id=payment_id)
-        
-        # Создаем запись в истории платежей
-        PaymentHistory.objects.create(
+
+        # Создаем запись в истории платежей только если её ещё нет
+        if not PaymentHistory.objects.filter(
             user=payment.user,
-            student_profile=payment.student_profile,
             payment=payment,
             month=payment.payment_month,
-            year=payment.payment_year,
-            amount_paid=payment.amount,
-            pricing_plan=payment.pricing_plan,
-            payment_type='card',
-            status='completed'
-        )
+            year=payment.payment_year
+        ).exists():
+            PaymentHistory.objects.create(
+                user=payment.user,
+                student_profile=payment.student_profile,
+                payment=payment,
+                month=payment.payment_month,
+                year=payment.payment_year,
+                amount_paid=payment.amount,
+                pricing_plan=payment.pricing_plan,
+                payment_type='card',
+                status='completed'
+            )
         
         # Получаем цену занятия для ученика
         price_info = get_price_by_class(payment.student_profile.class_number)
