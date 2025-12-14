@@ -81,7 +81,7 @@
             {% for year in all_info %}
                 {% for month in year.months %}
                 <div class="month-card">
-                    <div class="month-header" onclick="toggleMonth('month-{{ forloop.counter }}', this)">
+                    <div class="month-header" onclick="toggleMonth('month-{{ year.date }}-{{ month.id }}', this)">
                         <div class="month-title">{{ month.title }} {{ year.date }}</div>
                         <div class="month-stats">
                             <div class="month-stat">Учеников: {{ month.all_users }}</div>
@@ -91,8 +91,8 @@
                             </div>
                         </div>
                     </div>
-                    
-                    <div id="month-{{ forloop.counter }}" class="month-content">
+
+                    <div id="month-{{ year.date }}-{{ month.id }}" class="month-content">
                         {% for student in month.paid_users %}
                         <div class="student-card">
                             <div class="student-header status-paid">

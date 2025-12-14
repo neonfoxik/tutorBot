@@ -88,12 +88,18 @@ document.addEventListener('DOMContentLoaded', function() {
             });
             
             // Автоматическое открытие текущего месяца
-            const currentMonth = new Date();
-            const currentMonthElement = document.getElementById(`month-${12 - currentMonth.getMonth()}`);
+            const currentDate = new Date();
+            const currentYear = currentDate.getFullYear();
+            const currentMonth = currentDate.getMonth() + 1; // getMonth() возвращает 0-11, нам нужно 1-12
+
+            // Ищем элемент для текущего месяца текущего года
+            const currentMonthElement = document.getElementById(`month-${currentYear}-${currentMonth}`);
             if (currentMonthElement) {
                 currentMonthElement.classList.add('expanded');
                 const header = currentMonthElement.previousElementSibling;
-                header.querySelector('.collapse-icon').classList.add('rotated');
+                if (header && header.querySelector('.collapse-icon')) {
+                    header.querySelector('.collapse-icon').classList.add('rotated');
+                }
             }
         });
         
