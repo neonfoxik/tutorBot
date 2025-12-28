@@ -4,13 +4,13 @@ PRICING_CONFIG = {
     # Младшие классы (5-6)
     '5': {
         'name': '5 класс',
-        'price': 2950,
+        'price': 2213,
         'description': '1 час / 1 раз в нед',
         'keywords': ['5', '5 класс']
     },
     '6': {
         'name': '6 класс',
-        'price': 2950,
+        'price': 2213,
         'description': '1 час / 1 раз в нед',
         'keywords': ['6', '6 класс']
     },
@@ -18,7 +18,7 @@ PRICING_CONFIG = {
     # 7 класс
     '7': {
         'name': '7 класс',
-        'price': 5650,
+        'price': 4238,
         'description': '2 часа / 1 раз в нед',
         'keywords': ['7', '7 класс']
     },
@@ -26,7 +26,7 @@ PRICING_CONFIG = {
     # 8 класс
     '8': {
         'name': '8 класс (Алгебра + Геометрия)',
-        'price': 5650,
+        'price': 4238,
         'description': '2 часа / 1 раз в нед',
         'keywords': ['8', '8 класс']
     },
@@ -34,7 +34,7 @@ PRICING_CONFIG = {
     # 9 класс ОГЭ
     '9': {
         'name': 'ОГЭ (9 класс)',
-        'price': 5650,
+        'price': 4238,
         'description': '4 раза по 2 часа',
         'keywords': ['9', '9 класс']
     },
@@ -42,13 +42,13 @@ PRICING_CONFIG = {
     # 10 класс
     '10': {
         'name': '10 класс (База)',
-        'price': 5650,
+        'price': 4238,
         'description': '4 раза по 2 часа',
         'keywords': ['10', '10 класс']
     },
     '10_profile': {
         'name': '10 класс (Профиль)',
-        'price': 7000,
+        'price': 5250,
         'description': '3 часа в нед',
         'keywords': ['10_profile']
     },
@@ -56,18 +56,17 @@ PRICING_CONFIG = {
     # 11 класс
     '11': {
         'name': '11 класс (База)',
-        'price': 5650,
+        'price': 4238,
         'description': '4 раза по 2 часа',
         'keywords': ['11', '11 класс']
     },
     '11_profile': {
         'name': '11 класс (Профиль)',
-        'price': 7900,
+        'price': 5925,
         'description': '4 часа в нед + дом.зад + возможно Зум онлайн занятие 1 раз/нед',
         'keywords': ['11_profile']
     }
 }
-
 def get_price_by_class(class_info):
     """
     Получить цену по информации о классе пользователя
